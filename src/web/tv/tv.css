@@ -41,7 +41,8 @@ h1 span {
 #hint {
   margin-top: 1.5vh;
   font-size: 3.2vh;
-  opacity: 0.9;
+  font-weight: 600;
+  text-shadow: 0 0.3vh 0.8vh rgba(0, 0, 0, 0.7);
 }
 
 #games {

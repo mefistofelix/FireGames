@@ -15,7 +15,7 @@ function random(min, max) {
 function makeClouds() {
   return Array.from({ length: 7 }, () => ({
     x: random(0, WIDTH),
-    y: random(60, 380),
+    y: random(230, 520),
     size: random(50, 110),
     speed: random(6, 18),
   }));
