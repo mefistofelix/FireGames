@@ -80,7 +80,8 @@ adb install -r build\apk\FireGames-N.apk
 ## Sviluppo
 
 - `src/web` — tutto quello che si vede (pagina TV e pagina telefono), JavaScript senza build. Il tabellone è in
-  3D con [Three.js](https://threejs.org) (in `src/web/vendor`), unica libreria esterna.
+  3D con [Three.js](https://threejs.org) (in `src/web/vendor`), unica libreria esterna. Palazzi, auto, persone e
+  piante sono modelli CC0 di [Kenney](https://kenney.nl) (in `src/web/assets`).
 - `src/android` — guscio Kotlin: server HTTP/WebSocket in LAN, WebView a schermo intero, aggiornamento automatico.
 - Prova sul PC senza TV:
 

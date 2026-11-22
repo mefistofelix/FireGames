@@ -97,9 +97,24 @@ More direction from the owner (2026-11-22), to be followed in all three games:
   as assets. The board, the hotels and their names stay original: the classic game is a reference for the level
   of richness, not something to reproduce.
 
-- 3D is drawn with **Three.js r160**, vendored as `src/web/vendor/three.module.min.js` (approved by the owner; the
-  only third-party code in the project; no build step: it is imported as an ES module). Everything is procedural:
-  geometry from Three.js primitives, textures painted on canvases. No model or image files.
+- 3D is drawn with **Three.js r160**, vendored in `src/web/vendor` (`three.module.min.js`, plus `GLTFLoader.js` and
+  `BufferGeometryUtils.js` from its examples with their imports pointed at the local file). No build step: they are
+  imported as ES modules.
+- **Models** (approved by the owner on 2026-11-22: "use Blender, free assets, textures, whatever you want"):
+  buildings, cars, people and plants are CC0 models by Kenney (kenney.nl: City Kit Commercial, City Kit Suburban,
+  Car Kit, Mini Characters, Nature Kit), copied as `.glb` under `src/web/assets/grandviale/{city,town,cars,people,
+  nature}` with each kit's `Textures/colormap.png`. CC0 needs no credit; the licence text is kept next to them.
+  The full kits are downloaded to `build/assets` (disposable) when choosing models; each kit has a `Previews`
+  folder with one picture per model. Only free-licence assets (CC0 preferred) may be added; record source and
+  licence here. Blender is not installed on the dev PC and has not been needed so far (the kits ship `.glb`).
+- `grandviale-models.js` loads them: `loadModel(path)` gives a copy of a static model, `loadAnimated(path)` a
+  model with skeleton and clips (the people: `walk`, `idle`, `sit`...), `fitted()` puts a model on the ground at
+  a wanted size, `tinted()` colours it. The PBR materials of the files are swapped for Lambert ones with a fill
+  light (`FILL_LIGHT`), or the sides away from the sun look almost black on these palette-textured models.
+- Which model is which building of a hotel is in the hotel data (`models` in `grandviale.js`); a `null` entry
+  (the lighthouse) and anything not yet loaded is drawn with the old solids-made building. Roof equipment, parapets
+  and balconies exist only on those solids-made buildings. What is still made of plain solids: board, sea,
+  mountains, clouds, lamps, crane, lot hedges, leisure area, entrances, dice.
 - `grandviale-world.js` is the scene: wooden table, board slab whose top is one painted canvas (meadow, beach,
   avenue, spaces with their symbols, cream frame), sea, mountains, plants, lamps, clouds, boats; per hotel a lot
   plate in the owner's colour, flag, label sprite, buildings by `style` (`lighthouse`, `chalet`, `pitched`,

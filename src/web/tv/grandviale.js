@@ -35,23 +35,24 @@ const SPACE_TEXT = {
 // land: price of the lot. stages: cost of each piece in building order; the last one is the leisure area,
 // the others are buildings. rates: price of one night with that many pieces. center/size: the lot on the board.
 // reach: how many of the nearest spaces the hotel is "next to" (where it can be bought and where its entrances go).
-// style and tall (height of its buildings) say how the board draws it.
+// style, tall (height of its buildings) and models (one 3D model per building, null: made of plain solids)
+// say how the board draws it.
 const HOTEL_LIST = [
-  { name: "Locanda del Faro", accent: "#e76f51", style: "lighthouse", tall: 110, land: 1000, stages: [1200, 1000, 800, 700],
+  { name: "Locanda del Faro", accent: "#e76f51", style: "lighthouse", models: [null, "city/building-c", "town/building-type-c"], tall: 110, land: 1000, stages: [1200, 1000, 800, 700],
     entrance: 150, rates: [100, 200, 350, 500], center: [500, 952], size: [310, 124], reach: 3 },
-  { name: "Pensione Girasole", accent: "#e9c46a", style: "flat", tall: 105, land: 1200, stages: [1500, 1200, 1000, 800],
+  { name: "Pensione Girasole", accent: "#e9c46a", style: "flat", models: ["city/building-a", "city/building-b", "city/building-d"], tall: 105, land: 1200, stages: [1500, 1200, 1000, 800],
     entrance: 150, rates: [120, 250, 400, 550], center: [1400, 952], size: [310, 124], reach: 3 },
-  { name: "Villa Ortensia", accent: "#b388eb", style: "dome", tall: 120, land: 1800, stages: [2200, 1800, 1500, 1200],
+  { name: "Villa Ortensia", accent: "#b388eb", style: "dome", models: ["city/building-e", "city/building-f", "city/building-g"], tall: 120, land: 1800, stages: [2200, 1800, 1500, 1200],
     entrance: 200, rates: [200, 400, 650, 850], center: [915, 245], size: [230, 150], reach: 3 },
-  { name: "Albergo Tre Pini", accent: "#52b788", style: "pitched", tall: 125, land: 2000, stages: [2500, 2000, 1800, 1500, 1500],
+  { name: "Albergo Tre Pini", accent: "#52b788", style: "pitched", models: ["town/building-type-a", "town/building-type-b", "town/building-type-d", "town/building-type-e"], tall: 125, land: 2000, stages: [2500, 2000, 1800, 1500, 1500],
     entrance: 200, rates: [200, 400, 600, 900, 1150], center: [1715, 165], size: [280, 140], reach: 3 },
-  { name: "Rifugio Stella Alpina", accent: "#a47148", style: "chalet", tall: 115, land: 2500, stages: [3000, 2500, 2000, 1800],
+  { name: "Rifugio Stella Alpina", accent: "#a47148", style: "chalet", models: ["town/building-type-f", "town/building-type-n", "town/building-type-t"], tall: 115, land: 2500, stages: [3000, 2500, 2000, 1800],
     entrance: 250, rates: [300, 600, 950, 1250], center: [200, 180], size: [260, 140], reach: 3 },
-  { name: "Palazzo Belvedere", accent: "#f4a261", style: "palace", tall: 135, land: 3000, stages: [3500, 3000, 2500, 2500, 2000],
+  { name: "Palazzo Belvedere", accent: "#f4a261", style: "palace", models: ["city/building-h", "city/building-i", "city/building-k", "city/building-l"], tall: 135, land: 3000, stages: [3500, 3000, 2500, 2500, 2000],
     entrance: 300, rates: [350, 650, 1000, 1400, 1750], center: [935, 655], size: [270, 140], reach: 3 },
-  { name: "Grand Hotel Aurora", accent: "#ff8fab", style: "dome", tall: 175, land: 3500, stages: [4000, 3500, 3000, 3000, 2500],
+  { name: "Grand Hotel Aurora", accent: "#ff8fab", style: "dome", models: ["city/building-m", "city/building-j", "city/building-n", "city/building-skyscraper-e"], tall: 175, land: 3500, stages: [4000, 3500, 3000, 3000, 2500],
     entrance: 300, rates: [400, 800, 1200, 1700, 2100], center: [520, 560], size: [300, 230], reach: 4 },
-  { name: "Torre Zaffiro", accent: "#4895ef", style: "tower", tall: 270, land: 4000, stages: [5000, 4000, 4000, 3500, 3000],
+  { name: "Torre Zaffiro", accent: "#4895ef", style: "tower", models: ["city/building-skyscraper-a", "city/building-skyscraper-b", "city/building-skyscraper-c", "city/building-skyscraper-d"], tall: 270, land: 4000, stages: [5000, 4000, 4000, 3500, 3000],
     entrance: 350, rates: [500, 950, 1500, 2200, 2700], center: [1330, 560], size: [320, 240], reach: 4 },
 ];
 

@@ -254,6 +254,7 @@ class LanServer(private val assets: AssetManager, private val versionName: Strin
             "json" to "application/json",
             "svg" to "image/svg+xml",
             "png" to "image/png",
+            "glb" to "model/gltf-binary",
             "jpg" to "image/jpeg",
             "webp" to "image/webp",
             "mp3" to "audio/mpeg",

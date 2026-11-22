@@ -8,6 +8,7 @@
 import { euro } from "../shared/config.js";
 import * as THREE from "../vendor/three.module.min.js";
 import { PERMIT_LOOK, PIPS } from "./grandviale-hud.js";
+import { fitted, loadAnimated, loadModel, tinted } from "./grandviale-models.js";
 import { BEACH_Y, PATH, ROAD_WIDTH, SEA_Y, SPACE_COUNT, TILES, ringPoint } from "./grandviale-path.js";
 
 const RENDER_MAX_WIDTH = 1280; // rendered at 720p and scaled up by the page: enough for the TV stick's GPU
@@ -32,6 +33,13 @@ const PLANTS = [
   [290, 955, 80, "palm"], [730, 965, 70, "palm"], [960, 950, 85, "palm"], [1180, 960, 70, "palm"], [1650, 955, 80, "palm"],
   [60, 960, 75, "palm"], [1900, 950, 70, "palm"],
 ];
+const PLANT_MODELS = {
+  tree: ["tree_default", "tree_oak", "tree_detailed", "tree_fat"],
+  pine: ["tree_pineTallA", "tree_pineTallB", "tree_pineRoundC"],
+  palm: ["tree_palmTall", "tree_palmBend", "tree_palmDetailedTall"],
+};
+const CAR_MODELS = ["sedan", "suv", "taxi", "van", "hatchback-sports", "truck", "sedan-sports", "suv-luxury"];
+const PEOPLE_MODELS = ["male-a", "female-a", "male-b", "female-b"];
 const MOUNTAINS = [[40, -60, 150, 300], [330, -80, 170, 380], [610, -70, 140, 280], [-110, 120, 120, 230]]; // [x, y, radius, height]
 const CLOUDS = [[300, 200, 0.9], [1300, 500, 1.2], [1800, 150, 0.8]]; // [x, y, size]
 
@@ -355,7 +363,7 @@ export function createWorld(canvas, state, hotels, spaces) {
   resize();
 
   // ---- light ----
-  const sky = new THREE.HemisphereLight("#e6f2ff", "#7a6a45", 1.5);
+  const sky = new THREE.HemisphereLight("#e6f2ff", "#c9d2e6", 1.5);
   scene.add(sky);
   const sun = new THREE.DirectionalLight("#fff0d2", 3.2);
   sun.position.set(100, 1500, 1500);
@@ -432,38 +440,17 @@ export function createWorld(canvas, state, hotels, spaces) {
     scene.add(peak, cap);
   }
 
-  const trunk = lambert("#6b4a32");
-  const leaves = [lambert("#2f8f5b"), lambert("#256f4c"), lambert("#3fae62")];
+  // plants are models of the nature kit, put in place as they finish loading
   const palms = [];
   PLANTS.forEach(([x, y, size, kind], index) => {
-    if (kind === "tree") {
-      scene.add(solid(new THREE.CylinderGeometry(size * 0.08, size * 0.11, size * 0.7, 6), trunk, x, size * 0.35, y));
-      const crown = solid(new THREE.IcosahedronGeometry(size * 0.48, 1), leaves[index % 3], x, size * 0.95, y);
-      crown.scale.y = 1.15;
-      scene.add(crown);
-      return;
-    }
-    if (kind === "pine") {
-      scene.add(solid(new THREE.CylinderGeometry(size * 0.06, size * 0.09, size * 0.4, 6), trunk, x, size * 0.2, y));
-      for (let level = 0; level < 3; level++) {
-        scene.add(solid(new THREE.ConeGeometry(size * (0.42 - level * 0.1), size * 0.6, 8), leaves[1], x, size * (0.6 + level * 0.36), y));
-      }
-      return;
-    }
-    const palm = new THREE.Group();
-    const stem = solid(new THREE.CylinderGeometry(size * 0.05, size * 0.08, size * 1.3, 6), trunk, 0, size * 0.65, 0);
-    palm.add(stem);
-    for (let leaf = 0; leaf < 6; leaf++) {
-      const frond = solid(new THREE.ConeGeometry(size * 0.12, size * 0.75, 4), leaves[2], 0, size * 1.3, 0);
-      frond.rotation.set(0, 0, 1.15, "YXZ");
-      frond.rotation.y = leaf * Math.PI / 3;
-      frond.translateY(size * 0.33);
-      palm.add(frond);
-    }
-    palm.position.set(x, 0, y);
-    palm.rotation.z = 0.12;
-    scene.add(palm);
-    palms.push(palm);
+    const names = PLANT_MODELS[kind];
+    loadModel("nature/" + names[index % names.length] + ".glb").then((model) => {
+      const plant = fitted(model, { height: size * 1.7 });
+      plant.position.set(x, 0, y);
+      plant.rotation.y = index * 1.3;
+      scene.add(plant);
+      if (kind === "palm") palms.push(plant);
+    });
   });
 
   const cloudMaterial = lambert("#ffffff", { transparent: true, opacity: 0.9 });
@@ -506,6 +493,22 @@ export function createWorld(canvas, state, hotels, spaces) {
   const tennisRoof = lambert("#ffffff", { map: roofTexture("tennis") });
   const helipadRoof = lambert("#ffffff", { map: roofTexture("helipad") });
   const hotelViews = hotels.map((hotel) => buildHotel(hotel));
+
+  // The buildings are models (hotel.models, one per building); until a model has loaded, and for the pieces
+  // that have none, the place is held by the building made of plain solids.
+  hotelViews.forEach((view) => {
+    const colour = new THREE.Color(view.hotel.accent).lerp(white, 0.78); // a hint of the hotel's colour
+    view.pieces.forEach((piece, slot) => {
+      const name = view.hotel.models[slot];
+      if (!name) return;
+      loadModel(name + ".glb").then((model) => {
+        const building = tinted(fitted(model, { width: piece.userData.width * 1.15 }), colour);
+        piece.clear();
+        piece.add(building);
+        piece.userData.height = building.userData.size.y;
+      });
+    });
+  });
 
   function buildHotel(hotel) {
     const lot = hotel.lot;
@@ -850,7 +853,27 @@ export function createWorld(canvas, state, hotels, spaces) {
     person.add(solid(new THREE.SphereGeometry(5, 10, 8), lambert("#f1c9a5"), 0, 23, 0));
     person.visible = false;
     scene.add(person);
-    return { car, person };
+    const view = { car, person, mixer: null };
+    const index = state.players.indexOf(player);
+    loadModel("cars/" + CAR_MODELS[index % CAR_MODELS.length] + ".glb").then((model) => {
+      const body = tinted(fitted(model, { length: 70 }), new THREE.Color(player.hex).lerp(white, 0.25));
+      body.rotation.y = Math.PI / 2; // the models look along z, the game's cars along x
+      car.clear();
+      car.add(body);
+      // a pointer in the team's colour floats over the car, so that it is found at a glance
+      const pointer = new THREE.Mesh(new THREE.ConeGeometry(9, 18, 4), new THREE.MeshBasicMaterial({ color: player.hex }));
+      pointer.rotation.x = Math.PI;
+      pointer.position.y = 62;
+      car.add(pointer);
+    });
+    loadAnimated("people/character-" + PEOPLE_MODELS[index % PEOPLE_MODELS.length] + ".glb").then((gltf) => {
+      person.clear();
+      person.add(fitted(gltf.scene, { height: 34 }));
+      view.mixer = new THREE.AnimationMixer(gltf.scene);
+      const walk = gltf.animations.find((clip) => clip.name === "walk");
+      if (walk) view.mixer.clipAction(walk).play();
+    });
+    return view;
   });
 
   // Where a player's car is, where it looks, and where the person who got out of it is (null: on board).
@@ -883,11 +906,11 @@ export function createWorld(canvas, state, hotels, spaces) {
     const walked = (progress - 0.35) / 0.65;
     return {
       x: carX, y: carY, heading: Math.atan2(-(door.y - space.y), door.x - space.x),
-      person: walking ? { x: carX + (door.x - carX) * walked, y: carY + (door.y - carY) * walked } : null,
+      person: walking ? { x: carX + (door.x - carX) * walked, y: carY + (door.y - carY) * walked, leaving: player.glide.to !== door } : null,
     };
   }
 
-  function updatePlayers(now) {
+  function updatePlayers(now, seconds) {
     state.players.forEach((player, index) => {
       const view = playerViews[index];
       view.car.visible = !player.bankrupt;
@@ -899,7 +922,10 @@ export function createWorld(canvas, state, hotels, spaces) {
       view.car.position.set(pose.x, 0, pose.y);
       view.car.rotation.y = pose.heading;
       view.person.visible = pose.person !== null;
-      if (pose.person) view.person.position.set(pose.person.x, 5 + Math.abs(Math.sin(now / 90)) * 2.5, pose.person.y);
+      if (!pose.person) return;
+      view.person.position.set(pose.person.x, 5, pose.person.y);
+      view.person.rotation.y = pose.heading + Math.PI / 2 + (pose.person.leaving ? Math.PI : 0);
+      if (view.mixer) view.mixer.update(seconds);
     });
   }
 
@@ -1000,6 +1026,9 @@ export function createWorld(canvas, state, hotels, spaces) {
     camera.lookAt(current.x, 30 * close, current.z);
   }
 
+  // with ?demo in the address the scene can be inspected from the browser console
+  if (new URLSearchParams(location.search).has("demo")) window.grandViale = { THREE, scene, camera, renderer, sun, sky };
+
   // ---- night ----
   let night = 0;
   let frameNumber = 0;
@@ -1019,7 +1048,7 @@ export function createWorld(canvas, state, hotels, spaces) {
       updateSky(seconds);
       updateHotels(now, night);
       updateEntrances();
-      updatePlayers(now);
+      updatePlayers(now, seconds);
       updateDice(now);
       updateCamera(now, seconds);
 
