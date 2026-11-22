@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#14142b">
+  <title>Fire Games</title>
+  <link rel="stylesheet" href="pad.css">
+</head>
+<body>
+  <section id="join" class="screen">
+    <h1>FIRE <span>GAMES</span></h1>
+    <label for="name">Nome della squadra</label>
+    <input id="name" type="text" maxlength="12" autocomplete="off" enterkeyhint="done" placeholder="Come vi chiamate?">
+    <label>Colore</label>
+    <div id="colors"></div>
+    <button id="enter" class="primary" disabled>Entra</button>
+  </section>
+
+  <section id="lobby" class="screen" hidden>
+    <p id="welcome"></p>
+    <div id="car">
+      <div class="cabin"></div>
+      <div class="body"></div>
+      <div class="wheel left"></div>
+      <div class="wheel right"></div>
+    </div>
+    <p class="tip">Inclina il telefono o trascina la macchina: si muove sulla TV</p>
+    <button id="honk" class="primary">Clacson</button>
+    <div id="leader" hidden>
+      <p>Siete i primi: scegliete il gioco</p>
+      <div class="picker">
+        <button id="previous" aria-label="Gioco precedente">◀</button>
+        <strong id="game"></strong>
+        <button id="next" aria-label="Gioco successivo">▶</button>
+      </div>
+      <button id="start" class="primary">Avvia</button>
+    </div>
+  </section>
+
+  <div id="offline" hidden>Cerco la TV…</div>
+  <button id="fullscreen" hidden>Tocca per tornare a schermo intero</button>
+  <script type="module" src="pad.js"></script>
+</body>
+</html>

@@ -1,0 +1,227 @@
+/* Phone controller. One screen, no scrolling, no text selection: it must feel like a game pad. */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: linear-gradient(#1b2a5c, #14142b);
+  color: #fff;
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  height: 100dvh;
+  padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
+}
+
+h1 {
+  font-size: 40px;
+  font-weight: 900;
+  text-align: center;
+  letter-spacing: 2px;
+}
+
+h1 span {
+  color: #ffb703;
+}
+
+label {
+  margin-top: 10px;
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.7;
+}
+
+input {
+  padding: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 24px;
+  font-weight: 700;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+input:focus {
+  outline: none;
+  border-color: #ffb703;
+}
+
+#colors {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.color {
+  aspect-ratio: 1;
+  border: 4px solid transparent;
+  border-radius: 50%;
+  transition: transform 0.15s;
+}
+
+.color.chosen {
+  border-color: #fff;
+  transform: scale(1.12);
+}
+
+.color:disabled {
+  opacity: 0.18;
+}
+
+button {
+  border: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.primary {
+  margin-top: auto;
+  padding: 22px;
+  border-radius: 22px;
+  background: #ffb703;
+  color: #14142b;
+  font-size: 26px;
+  font-weight: 900;
+  box-shadow: 0 6px 0 #b97f00;
+}
+
+.primary:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 #b97f00;
+}
+
+.primary:disabled {
+  opacity: 0.35;
+}
+
+#welcome {
+  font-size: 26px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.tip {
+  font-size: 15px;
+  text-align: center;
+  opacity: 0.7;
+}
+
+#car {
+  --color: #e63946;
+  position: relative;
+  align-self: center;
+  width: 200px;
+  height: 120px;
+  margin: 18px 0;
+  transition: transform 0.08s linear;
+}
+
+#car .body {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 52px;
+  height: 48px;
+  border-radius: 16px;
+  background: var(--color);
+}
+
+#car .cabin {
+  position: absolute;
+  left: 42px;
+  top: 12px;
+  width: 110px;
+  height: 56px;
+  border: 10px solid var(--color);
+  border-radius: 20px;
+  background: #cfefff;
+}
+
+#car .wheel {
+  position: absolute;
+  top: 78px;
+  width: 42px;
+  height: 42px;
+  border: 12px solid #0b0b14;
+  border-radius: 50%;
+  background: #b8c0cc;
+}
+
+#car .wheel.left {
+  left: 24px;
+}
+
+#car .wheel.right {
+  right: 24px;
+}
+
+#leader {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.08);
+  text-align: center;
+}
+
+#leader .primary {
+  margin-top: 0;
+}
+
+.picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.picker strong {
+  flex: 1;
+  font-size: 22px;
+}
+
+.picker button {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  font-size: 22px;
+}
+
+#honk {
+  margin-top: 0;
+}
+
+#offline, #fullscreen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(20, 20, 43, 0.94);
+  font-size: 24px;
+  font-weight: 800;
+  text-align: center;
+}

@@ -1,0 +1,12 @@
+# inverted: everything is ignored except what is listed here
+/*
+!/.gitignore
+!/.github/
+!/AGENTS.md
+!/README.md
+!/build.gradle.kts
+!/settings.gradle.kts
+!/gradle.properties
+!/build.sh
+!/release.sh
+!/src/

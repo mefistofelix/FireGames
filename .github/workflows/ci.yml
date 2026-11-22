@@ -1,0 +1,22 @@
+name: 'ci'
+on:
+  #push:
+  workflow_dispatch:
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    permissions: write-all
+    steps:
+      - run: |
+          git init
+          git remote add origin $GITHUB_SERVER_URL/$GITHUB_REPOSITORY
+          git fetch origin --depth=1 $GITHUB_SHA
+          git checkout $GITHUB_SHA
+      - run: |
+          chmod +x ./*.sh
+          ./build.sh
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "build-$GITHUB_RUN_NUMBER" build/apk/*.apk --target "$GITHUB_SHA" --title "Fire Games build $GITHUB_RUN_NUMBER" --notes "$GITHUB_SHA" ||
+          gh release upload "build-$GITHUB_RUN_NUMBER" build/apk/*.apk --clobber
