@@ -237,8 +237,9 @@ function dieTextures(kind) {
 }
 
 export function createWorld(canvas, state, hotels, spaces) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
   renderer.shadowMap.enabled = true;
+  renderer.shadowMap.autoUpdate = false; // redrawn every other frame, see draw()
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
@@ -267,7 +268,7 @@ export function createWorld(canvas, state, hotels, spaces) {
   sun.position.set(100, 1500, 1500);
   sun.target.position.set(960, 0, 560);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.left = -1350;
   sun.shadow.camera.right = 1350;
   sun.shadow.camera.top = 1100;
@@ -862,6 +863,7 @@ export function createWorld(canvas, state, hotels, spaces) {
 
   // ---- night ----
   let night = 0;
+  let frameNumber = 0;
 
   function updateSky(seconds) {
     night += ((state.night ? 1 : 0) - night) * Math.min(1, seconds * 2.2);
@@ -898,6 +900,8 @@ export function createWorld(canvas, state, hotels, spaces) {
       palms.forEach((palm, index) => {
         palm.rotation.z = 0.12 + Math.sin(now / 1100 + index) * 0.04;
       });
+      frameNumber++;
+      renderer.shadowMap.needsUpdate = frameNumber % 2 === 0;
       renderer.render(scene, camera);
     },
     stop() {

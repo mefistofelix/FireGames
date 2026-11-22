@@ -7,6 +7,7 @@ import { roundedRect } from "./scene.js";
 
 const WIDTH = 1920;
 const HEIGHT = 1080;
+const CANVAS_MAX_WIDTH = 1280; // like the 3D scene: 720p scaled up by the page
 
 export const PERMIT_LOOK = {
   si: { text: "SÌ", color: "#2ec46d" },
@@ -35,7 +36,7 @@ export function createHud(canvas, state) {
   const context = canvas.getContext("2d");
 
   function resize() {
-    canvas.width = Math.min(window.innerWidth * (window.devicePixelRatio || 1), WIDTH);
+    canvas.width = Math.min(window.innerWidth * (window.devicePixelRatio || 1), CANVAS_MAX_WIDTH);
     canvas.height = canvas.width * HEIGHT / WIDTH;
   }
   window.addEventListener("resize", resize);
