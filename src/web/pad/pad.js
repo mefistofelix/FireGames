@@ -5,7 +5,6 @@ import { COLORS, GAMES, PING_MS, SILENCE_MS } from "../shared/config.js";
 import { openGuest } from "../shared/link.js";
 
 const TILT_SEND_MS = 66;
-const TILT_FULL_DEGREES = 40;
 
 const elements = {
   join: document.getElementById("join"),
@@ -100,13 +99,11 @@ function sendHello() {
   link.send({ t: "hello", name: elements.name.value, color: chosenColor });
 }
 
-// Browsers grant fullscreen, screen wake lock and motion sensors only inside a touch handler.
+// Browsers grant fullscreen and screen wake lock only inside a touch handler.
 function claimPhone() {
   const root = document.documentElement;
   if (root.requestFullscreen) root.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
   if (navigator.wakeLock) navigator.wakeLock.request("screen").catch(() => {});
-  const needsMotionPermission = window.DeviceOrientationEvent && DeviceOrientationEvent.requestPermission;
-  if (needsMotionPermission) DeviceOrientationEvent.requestPermission().catch(() => {});
 }
 
 function sendTilt() {
@@ -139,12 +136,7 @@ elements.previous.onclick = () => link.send({ t: "pick", step: -1 });
 elements.next.onclick = () => link.send({ t: "pick", step: 1 });
 elements.start.onclick = () => link.send({ t: "start" });
 
-// Motion sensors work only on secure pages (see AGENTS.md); dragging the car always works.
-window.addEventListener("deviceorientation", (event) => {
-  if (event.gamma === null || dragStartX !== null) return;
-  setTilt(event.gamma / TILT_FULL_DEGREES);
-});
-
+// Touch only: motion sensors are not used (see AGENTS.md).
 elements.car.addEventListener("pointerdown", (event) => {
   dragStartX = event.clientX;
   elements.car.setPointerCapture(event.pointerId);

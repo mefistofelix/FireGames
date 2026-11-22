@@ -15,7 +15,7 @@ Giochi da tavolo per **Fire TV** da fare in compagnia davanti alla TV: la TV è 
 | | |
 |---|---|
 | Collegamento telefoni via QR, nome e colore squadra | fatto |
-| Sala d'attesa animata (ogni squadra è una macchina: clacson, si muove inclinando/trascinando) | fatto |
+| Sala d'attesa animata (ogni squadra è una macchina: clacson, si muove trascinandola) | fatto |
 | Scelta del gioco (dal telefono della prima squadra o dal telecomando) | fatto |
 | **Grand Viale** — terreni, hotel e pedaggi | da fare |
 | **Dominio** — carri armati, dadi e conquista | da fare |
@@ -34,8 +34,8 @@ Note sui telefoni:
 
 - La pagina chiede lo **schermo intero** al tocco su *Entra*. Su iPhone Safari lo schermo intero non esiste: la
   pagina è comunque fatta per stare in una schermata senza scorrere.
-- I **sensori di movimento** del telefono non sono disponibili (i browser li danno solo alle pagine HTTPS): ogni
-  effetto ha un equivalente a tocco.
+- I comandi sono **solo a tocco**: i sensori di movimento del telefono non vengono usati (i browser li danno solo
+  alle pagine HTTPS, che in rete locale non ci sono).
 
 ## Installazione e aggiornamenti
 

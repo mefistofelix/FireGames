@@ -30,7 +30,7 @@ Keep both files aligned with every accepted change, in the same commit.
 - `src/web/shared/sound.js` — sound effects synthesized with Web Audio (no audio files).
 - `src/web/tv/` — TV page: `tv.js` lobby logic (seats, leader, game choice), `scene.js` animated backdrop
   (sky, clouds, birds, pond, traffic; every player is a car on the road), `tv.css` sized in `vh`.
-- `src/web/pad/` — phone page: join form (team name, colour), lobby pad (horn, tilt, game choice for the leader).
+- `src/web/pad/` — phone page: join form (team name, colour), lobby pad (horn, drag the car, game choice for the leader).
 - `src/android/java/.../LanServer.kt` — static files from assets (`Cache-Control: no-cache`), `/info`
   (`{ip, port, version}`), `/ws?id=`; sends `{t:"bye"}` to the TV when a phone's socket closes.
 - `MainActivity.kt` — WebView, keep-screen-on, update dialog. `Updater.kt` / `Relauncher.kt` — self-update.
@@ -40,7 +40,7 @@ Keep both files aligned with every accepted change, in the same commit.
 ## Lobby protocol (bodies)
 
 Phone → TV: `{t:"peek"}` (ask the lobby state before joining), `{t:"hello", name, color}`, `{t:"ping"}` every
-2 s, `{t:"tilt", x}` (-1..1, sent on change at most 15 Hz), `{t:"honk"}`, and from the leader (first seated
+2 s, `{t:"tilt", x}` (-1..1, how far the car is dragged, sent on change at most 15 Hz), `{t:"honk"}`, and from the leader (first seated
 player) `{t:"pick", step}` and `{t:"start"}`.
 TV → phone: `{t:"lobby", taken, you, game}` (`you` is null until seated), `{t:"pong"}`.
 A phone silent for 6 s is dropped; a phone that hears nothing for 6 s shows "Cerco la TV…".
@@ -51,8 +51,8 @@ When a game adds messages, document them here.
 The phones load the pad over plain `http://` from a LAN address, which browsers treat as an insecure page:
 
 - **Motion sensors (gyroscope / accelerometer) do not fire** on insecure pages, on both Android Chrome and iOS
-  Safari. So every motion effect must have a touch equivalent (today: drag the car). Real gyro needs HTTPS, which
-  on a LAN means a real certificate for a DNS name that resolves to the TV, see "Open decisions".
+  Safari. Decision of the owner (2026-11-22): **touch only, no gyroscope**. Do not add motion-sensor code;
+  design "wow" interactions around touch (drag, swipe, hold, shake-free gestures) and phone vibration.
 - **Screen Wake Lock** is also secure-context only: the phone screen may dim during long turns of other players.
 - **Fullscreen**: requested on the "Entra" tap. Works on Android; iPhone Safari has no page fullscreen at all, so
   the pad is laid out to fit one screen without scrolling (`100dvh`, no zoom, no selection, no overscroll).
@@ -105,10 +105,7 @@ Status: only the shared platform exists (connection, lobby, seats, game choice).
 
 ## Open decisions (ask the owner)
 
-- **Gyroscope**: wanted for "wow" effects, impossible over plain HTTP. Options: (a) keep touch equivalents only;
-  (b) HTTPS on the LAN with a certificate for a wildcard DNS name mapped to private addresses (needs a domain, the
-  private key ships in the APK, some routers block such DNS answers); (c) pad served from an HTTPS site and linked
-  to the TV through an internet relay (contradicts "LAN only", but would also let a guest without Wi-Fi play).
-- **Guest without the Wi-Fi password**: optional Wi-Fi QR code (password typed once on the TV) and/or option (c).
+- **Guest without the Wi-Fi password**: optional Wi-Fi QR code (password typed once on the TV). An internet relay
+  for players outside the LAN was discussed and not chosen.
 - Rendering for the games: hand-written Canvas 2D (current) or a library such as Three.js / PixiJS for 3D dice
   and richer effects (needs approval as a dependency, and a performance check on the TV).
