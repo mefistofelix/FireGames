@@ -138,16 +138,35 @@ Status: the platform and **Grand Viale** are playable; the other two show "in ar
 
 ### Grand Viale rules (as implemented in `grandviale.js`)
 
-- 28 spaces in a ring, 8 hotels on lots next to it, 2+ teams, 12.000 € each. Turn: roll one die, move.
-- Passing the Banca (space 0) pays 2.000 €. Bonus spaces pay 500 €.
-- Acquisti space: buy a free lot next to that space. Cantiere space: ask the permit for the next building of any
-  own hotel — permit die: 3 faces yes, 1 no, 1 free, 1 double price (may be declined). Municipio: permit granted.
-- Entrances: one per turn may be bought for an own hotel with buildings (free on the Ingresso spaces); it takes
-  the first free space next to the lot, one entrance per space.
-- Stopping on a space with another team's entrance: roll the die for the nights, pay nights × the hotel's rate.
-- A team that cannot pay sells its hotels to the bank at half cost, cheapest first; still short = bankrupt.
+The mechanics follow the classic rules of the hotel-building family, checked on 2026-11-22 against three published
+rule summaries (hotelboardgame.com, rulespal.com, ultraboardgames.com; editions differ on details). Board,
+hotel names, prices and art are our own and must stay so.
+
+- 2-4+ teams, 12.000 € each. Two dice: the numbered die (movement and nights) and the permit die. Both are
+  always shown in the bottom right corner with their last result.
+- Turn: roll the numbered die and move. Two cars never share a space: the car goes on to the next free one.
+  A six gives another throw after the turn's business.
+- Passing the Banca (space 0) pays 2.000 €; with three or more teams it stops paying when only two are left.
+- Acquisti space: buy a free lot next to that space, or take over ("esproprio") a lot another team owns there
+  with nothing built, paying that team half the land price. No building in the same turn.
+- Cantiere space: choose one own hotel and how many of its next buildings to ask for, then roll the permit die:
+  3 faces yes (pay), 1 no, 1 free, 1 double price (may be declined). Buildings go up in order; the leisure area is
+  the last piece, asked for alone, and raises the night rate like a building.
+- Regalo space: the next piece of one own hotel, free and without permit.
+- Entrances: reaching or passing the Municipio (space 14) gives the right, that turn, to buy one entrance for each
+  own hotel with at least one building. The Ingresso spaces give one free entrance. An entrance takes the first
+  free space next to the lot; one entrance per space.
+- Stopping on a space with another team's entrance: roll the numbered die for the nights, pay nights × the
+  hotel's rate for its current pieces.
+- A team that cannot pay auctions whole hotels (cheapest first) to the other teams, from the land price in steps
+  of 500 €; with no bid the bank pays the land price and the hotel is cleared. Still short = bankrupt.
   Last team standing wins; the first team (or Back twice on the remote) can end early: richest wins.
-- Not done yet: choosing where an entrance goes, auctions, trading, skipping an absent team's turn.
+- Differences from the classic rules, on purpose or not yet done: the entrance space is chosen automatically
+  (no "reserved" first space, no stealing the opposite side of the road), a claim is never forgotten (the game
+  asks for every payment itself), the double-price permit may be declined, no trading between teams, no way to
+  skip an absent team's turn.
+- Checked by playing in the browser: buying, occupied spaces, several buildings on one permit, the six, the
+  stay with payment. Not yet played through: esproprio, Regalo, Municipio entrances, auction, bankruptcy.
 
 ## Open decisions (ask the owner)
 

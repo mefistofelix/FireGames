@@ -37,12 +37,21 @@ passa il telecomando. **Indietro** due volte termina la partita.
 
 ### Grand Viale
 
-Si lancia il dado e si gira sul viale. Sulle caselle **Acquisti** 💰 si compra il terreno accanto, sulle caselle
-**Cantiere** 🏗️ si chiede il permesso di costruire (il dado dei permessi può dire sì, no, gratis o prezzo doppio),
-al **Municipio** 🏛️ il permesso è garantito. Con almeno un edificio si aprono gli **ingressi** sulle caselle
-accanto all'hotel: chi si ferma su un ingresso altrui entra in hotel, lancia il dado per le notti e paga.
-Passando dalla **Banca** 🏦 si incassano 2.000 €. Chi non può pagare vende gli hotel alla banca a metà prezzo;
-se non basta è in bancarotta. Vince l'ultima squadra rimasta, o la più ricca se la partita viene terminata prima.
+I dadi sono due: quello **numerato** (per muoversi e per le notti) e quello dei **permessi**.
+
+- Si lancia il dado numerato e si avanza sul viale. Due macchine non stanno mai sulla stessa casella: chi arriva
+  su una casella occupata prosegue fino alla prima libera. Con un **sei** si tira ancora.
+- **Banca** 🏦: passando si incassano 2.000 €.
+- **Acquisti** 💰: si compra il terreno libero accanto, oppure si **espropria** a metà prezzo un terreno altrui su
+  cui non è stato costruito nulla.
+- **Cantiere** 🏗️: si sceglie un proprio hotel e quanti edifici costruire, poi si lancia il dado dei permessi:
+  sì, no, gratis oppure prezzo doppio. Dopo gli edifici si può aggiungere l'**area relax**, che alza la tariffa.
+- **Regalo** 🎁: un pezzo di hotel gratis, senza permesso.
+- **Municipio** 🏛️: passandoci si può aprire un **ingresso** per ogni proprio hotel. Le caselle **Ingresso** 🚪
+  ne regalano uno.
+- Chi si ferma su un ingresso altrui entra in hotel, lancia il dado per le **notti** e paga.
+- Chi non può pagare mette **all'asta** i propri hotel; se non basta è in bancarotta. Vince l'ultima squadra
+  rimasta, o la più ricca se la partita viene terminata prima.
 
 Note sui telefoni:
 

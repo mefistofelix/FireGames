@@ -26,7 +26,7 @@ const TILES = {
   buy: { color: "#2ec46d", icon: "💰" },
   build: { color: "#f77f00", icon: "🏗️" },
   free: { color: "#35c6f0", icon: "🚪" },
-  bonus: { color: "#ff6fb5", icon: "🎁" },
+  gift: { color: "#ff6fb5", icon: "🎁" },
   municipio: { color: "#9b5de5", icon: "🏛️" },
 };
 
@@ -541,13 +541,39 @@ export function createBoard(canvas, state, hotels, spaces) {
     }
   }
 
+  // The leisure area, last piece of a hotel: a pool with a sunshade in front of the buildings.
+  function drawLeisure(hotel, grow) {
+    const lot = hotel.lot;
+    const zoom = camera.zoom;
+    const center = project(lot.x + lot.width * 0.74, lot.y + lot.height * 0.74, 0);
+    const width = 62 * grow * zoom;
+    context.fillStyle = "#fffaf0";
+    context.beginPath();
+    context.ellipse(center.x, center.y, width + 7 * zoom, (width + 7 * zoom) * 0.42, 0, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "#35c6f0";
+    context.beginPath();
+    context.ellipse(center.x, center.y, width, width * 0.42, 0, 0, Math.PI * 2);
+    context.fill();
+    const pole = { x: center.x + width + 22 * zoom, y: center.y + 6 * zoom };
+    context.fillStyle = "#8a5a35";
+    context.fillRect(pole.x - 2 * zoom, pole.y - 54 * grow * zoom, 4 * zoom, 54 * grow * zoom);
+    context.fillStyle = "#e63946";
+    context.beginPath();
+    context.arc(pole.x, pole.y - 54 * grow * zoom, 26 * grow * zoom, Math.PI, 0);
+    context.fill();
+  }
+
   function drawHotel(index, now) {
+    const hotel = hotels[index];
     const status = state.hotels[index];
-    for (let slot = 0; slot < status.stage; slot++) {
+    const newestGrow = Math.max(0.02, easeOutBack(Math.min(1, (now - status.builtAt) / 900)));
+    const built = Math.min(status.stage, hotel.buildings);
+    for (let slot = 0; slot < built; slot++) {
       const newest = slot === status.stage - 1;
-      const t = newest ? Math.min(1, (now - status.builtAt) / 900) : 1;
-      drawBuilding(hotels[index], slot, Math.max(0.02, easeOutBack(t)), now);
+      drawBuilding(hotel, slot, newest ? newestGrow : 1, now);
     }
+    if (status.stage > hotel.buildings) drawLeisure(hotel, newestGrow);
   }
 
   function drawEntrance(space, index) {
@@ -693,6 +719,36 @@ export function createBoard(canvas, state, hotels, spaces) {
     context.restore();
   }
 
+  // The two dice of the game with their last result, in the bottom right corner.
+  function drawTray() {
+    const dice = [
+      { x: 1740, kind: "number", face: state.tray.number },
+      { x: 1838, kind: "permit", face: state.tray.permit },
+    ];
+    context.fillStyle = "rgba(16, 18, 44, 0.8)";
+    roundedRect(context, 1680, 962, 218, 100, 24);
+    for (const die of dice) {
+      context.fillStyle = "#fff";
+      roundedRect(context, die.x - 38, 974, 76, 76, 16);
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      if (die.kind === "number" && die.face) {
+        context.fillStyle = "#14142b";
+        for (const [column, row] of PIPS[die.face]) {
+          context.beginPath();
+          context.arc(die.x + column * 21, 1012 + row * 21, 8, 0, Math.PI * 2);
+          context.fill();
+        }
+      } else {
+        const look = die.face ? PERMIT_LOOK[die.face] : { text: die.kind === "number" ? "1-6" : "SÌ/NO", color: "#9aa3b8" };
+        context.fillStyle = look.color;
+        context.font = "900 " + (look.text.length > 2 ? 17 : 34) + "px system-ui, sans-serif";
+        context.fillText(look.text, die.x, 1013);
+      }
+      context.textBaseline = "alphabetic";
+    }
+  }
+
   function drawBanner(now) {
     const banner = state.banner;
     if (now > banner.until) return;
@@ -775,6 +831,7 @@ export function createBoard(canvas, state, hotels, spaces) {
     }
     drawUpright(now);
     drawChips(seconds);
+    drawTray();
     drawBanner(now);
     drawDie(now);
     drawTexts(now);
