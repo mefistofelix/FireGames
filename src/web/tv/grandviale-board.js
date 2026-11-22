@@ -11,6 +11,7 @@ import { drawCar, roundedRect } from "./scene.js";
 
 const WIDTH = 1920;
 const HEIGHT = 1080;
+const CANVAS_MAX_WIDTH = 1280; // drawn at 720p and scaled up by the page: the TV stick cannot fill 1080p every frame
 const GROUND_SQUASH = 0.72; // how much the ground is flattened by the viewing angle
 const SCREEN_CENTER = { x: 960, y: 590 };
 const OVERVIEW = { x: 960, y: 610, zoom: 1 };
@@ -18,7 +19,7 @@ const SPACE_COUNT = 28;
 const ROAD_WIDTH = 96;
 const BEACH_Y = 885;
 const SEA_Y = 1035;
-const LAYER = { x: -300, y: -150, width: 2520, height: 1250, scale: 1.25 }; // world rectangle of the painted layer
+const LAYER = { x: -300, y: -150, width: 2520, height: 1250, scale: 1 }; // world rectangle of the painted layer
 
 const TILES = {
   bank: { color: "#ffd23f", icon: "🏦" },
@@ -218,7 +219,7 @@ export function createBoard(canvas, state, hotels, spaces) {
   let bottomGap = 0;
 
   function resize() {
-    canvas.width = Math.min(window.innerWidth * (window.devicePixelRatio || 1), WIDTH);
+    canvas.width = Math.min(window.innerWidth * (window.devicePixelRatio || 1), CANVAS_MAX_WIDTH);
     canvas.height = canvas.width * window.innerHeight / window.innerWidth;
     unit = canvas.width / WIDTH;
     bottomGap = canvas.height - HEIGHT * unit;
@@ -267,10 +268,7 @@ export function createBoard(canvas, state, hotels, spaces) {
     const time = now / 1000;
     context.fillStyle = "#f2dfa7";
     context.fillRect(-3000, BEACH_Y, 8000, SEA_Y - BEACH_Y + 40);
-    const sea = context.createLinearGradient(0, SEA_Y, 0, SEA_Y + 320);
-    sea.addColorStop(0, "#58c4dd");
-    sea.addColorStop(1, "#2a7fc0");
-    context.fillStyle = sea;
+    context.fillStyle = "#3fa9d6";
     context.fillRect(-3000, SEA_Y, 8000, 3000);
     context.strokeStyle = "rgba(255, 255, 255, 0.8)";
     context.lineWidth = 7;
