@@ -5,7 +5,9 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.WindowManager
+import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -34,7 +36,13 @@ class MainActivity : Activity() {
         web.settings.domStorageEnabled = true
         web.settings.mediaPlaybackRequiresUserGesture = false // sound effects without a click
         web.webViewClient = WebViewClient()
-        web.webChromeClient = WebChromeClient() // console messages go to logcat
+        web.webChromeClient = object : WebChromeClient() {
+            // the page's console goes to logcat: adb logcat -s FireGames
+            override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+                Log.i("FireGames", "${message.message()} (${message.sourceId()}:${message.lineNumber()})")
+                return true
+            }
+        }
         setContentView(web)
         web.loadUrl("http://127.0.0.1:${LanServer.PORT}/tv/index.html")
     }
