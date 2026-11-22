@@ -116,6 +116,7 @@ function startGame() {
   scene.setRunning(false);
   game = startGrandViale({
     canvas: document.getElementById("board"),
+    worldCanvas: document.getElementById("world"),
     seats,
     send: (peerId, body) => link.send(peerId, body),
     onPrompt,

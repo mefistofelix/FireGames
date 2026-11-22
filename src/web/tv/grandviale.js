@@ -72,9 +72,9 @@ function wait(milliseconds) {
 }
 
 // seats: [{peerId, name, hex}] in turn order; the first one may end the game early.
-// send(peerId, body) delivers a view to a phone. onPrompt(prompt) tells the TV which question is waiting
+// canvas takes the flat panels, worldCanvas (under it) the 3D scene. send(peerId, body) delivers a view to a phone. onPrompt(prompt) tells the TV which question is waiting
 // ({player, status, buttons} or null) so the remote can answer it. onFinish() is called after the final ranking.
-export function startGrandViale({ canvas, seats, send, onPrompt, onFinish }) {
+export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, onFinish }) {
   const state = {
     players: seats.map((seat) => ({ ...seat, cash: START_CASH, shownCash: START_CASH, space: 0, move: null, bankrupt: false })),
     hotels: HOTELS.map(() => ({ owner: null, stage: 0, invested: 0, entrances: [], builtAt: 0 })),
@@ -83,10 +83,10 @@ export function startGrandViale({ canvas, seats, send, onPrompt, onFinish }) {
     die: { visible: false },
     tray: { number: null, permit: null }, // last result of the two dice, shown in a corner
     banner: { text: "", until: 0 },
-    effects: [],
+    effects: [], // amounts floating on the panels: {text, hex, x, y, start, duration}
     finished: null,
   };
-  const board = createBoard(canvas, state, HOTELS, SPACES);
+  const board = createBoard(worldCanvas, canvas, state, HOTELS, SPACES);
   let prompt = null; // {peerId, player, status, buttons, resolve}: the question waiting on a phone
   let note = "";
   let over = false;
@@ -97,7 +97,7 @@ export function startGrandViale({ canvas, seats, send, onPrompt, onFinish }) {
   }
 
   function floatText(text, hex, point) {
-    state.effects.push({ kind: "text", text, hex, x: point.x, y: point.y, start: performance.now(), duration: 1600 });
+    state.effects.push({ text, hex, x: point.x, y: point.y, start: performance.now(), duration: 1600 });
   }
 
   function credit(player, amount) {
@@ -356,20 +356,13 @@ export function startGrandViale({ canvas, seats, send, onPrompt, onFinish }) {
   // Adds the next pieces of a hotel, one after the other, for a total price.
   async function construct(player, index, count, cost) {
     const hotel = state.hotels[index];
-    const lot = HOTELS[index].lot;
     if (cost) credit(player, -cost);
     hotel.invested += cost;
     for (let piece = 0; piece < count; piece++) {
       hotel.stage++;
       hotel.builtAt = performance.now();
       sound.build();
-      for (let i = 0; i < 26; i++) {
-        state.effects.push({
-          kind: "dust", x: lot.x + Math.random() * lot.width, y: lot.y + lot.height * 0.5,
-          dx: (Math.random() - 0.5) * 120, dy: -40 - Math.random() * 120, start: performance.now(), duration: 900,
-        });
-      }
-      await wait(1100);
+      await wait(1300);
     }
   }
 
