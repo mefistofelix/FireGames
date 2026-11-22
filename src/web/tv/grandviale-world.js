@@ -16,7 +16,7 @@ const BOARD_TEXTURE_SCALE = 1.25;
 const OVERVIEW = { x: 960, z: 600, zoom: 1 };
 const CAMERA_DISTANCE = 2250;
 const CONSTRUCTION_MS = 1000;
-const DIE_SIZE = 58;
+const DIE_SIZE = 84;
 const DIE_THROW_MS = 1200;
 
 // Relative heights of the buildings of a hotel, by how many it has.
@@ -61,6 +61,66 @@ function solid(geometry, material, x, height, y) {
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   return mesh;
+}
+
+// Many boxes as one mesh: small repeated details (balconies, hedges) must not cost a draw call each.
+// Each box is {w, h, d, x, y, z}: size and centre.
+function mergedBoxes(boxes) {
+  const positions = [];
+  const normals = [];
+  const uvs = [];
+  const indices = [];
+  for (const box of boxes) {
+    const geometry = new THREE.BoxGeometry(box.w, box.h, box.d);
+    geometry.translate(box.x, box.y, box.z);
+    const first = positions.length / 3;
+    positions.push(...geometry.attributes.position.array);
+    normals.push(...geometry.attributes.normal.array);
+    uvs.push(...geometry.attributes.uv.array);
+    for (const index of geometry.index.array) indices.push(index + first);
+  }
+  const merged = new THREE.BufferGeometry();
+  merged.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  merged.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+  merged.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  merged.setIndex(indices);
+  return merged;
+}
+
+// What is painted on a flat roof: a tennis court or a helipad.
+function roofTexture(kind) {
+  return canvasTexture(128, 128, (context) => {
+    context.strokeStyle = "#ffffff";
+    context.lineWidth = 4;
+    if (kind === "tennis") {
+      context.fillStyle = "#2f8f5b";
+      context.fillRect(0, 0, 128, 128);
+      context.fillStyle = "#c8643c";
+      context.fillRect(16, 10, 96, 108);
+      context.strokeRect(24, 18, 80, 92);
+      context.beginPath();
+      context.moveTo(24, 64);
+      context.lineTo(104, 64);
+      context.moveTo(64, 36);
+      context.lineTo(64, 92);
+      context.moveTo(24, 36);
+      context.lineTo(104, 36);
+      context.moveTo(24, 92);
+      context.lineTo(104, 92);
+      context.stroke();
+      return;
+    }
+    context.fillStyle = "#4a4f63";
+    context.fillRect(0, 0, 128, 128);
+    context.beginPath();
+    context.arc(64, 64, 48, 0, Math.PI * 2);
+    context.stroke();
+    context.font = "900 64px system-ui, sans-serif";
+    context.fillStyle = "#ffffff";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText("H", 64, 68);
+  });
 }
 
 function easeOut(t) {
@@ -407,6 +467,11 @@ export function createWorld(canvas, state, hotels, spaces) {
   // ---- hotels ----
   const lotFree = new THREE.Color("#e8d9b0");
   const white = new THREE.Color("#ffffff");
+  const poolWater = new THREE.MeshPhongMaterial({ color: "#35c6f0", shininess: 120 });
+  const paleStone = lambert("#f4efe2");
+  const hedge = lambert("#2a7a4b");
+  const tennisRoof = lambert("#ffffff", { map: roofTexture("tennis") });
+  const helipadRoof = lambert("#ffffff", { map: roofTexture("helipad") });
   const hotelViews = hotels.map((hotel) => buildHotel(hotel));
 
   function buildHotel(hotel) {
@@ -416,6 +481,17 @@ export function createWorld(canvas, state, hotels, spaces) {
     const border = solid(new THREE.BoxGeometry(lot.width + 16, 3, lot.height + 16), lambert("#b99b62"), centerX, 1.5, centerY);
     const plate = solid(new THREE.BoxGeometry(lot.width, 5, lot.height), lambert(lotFree), centerX, 2.5, centerY);
     scene.add(border, plate);
+
+    // a hedge around the lot, open at the front, and shrubs at the back corners
+    const edge = 8;
+    scene.add(solid(mergedBoxes([
+      { w: lot.width - 8, h: 9, d: edge, x: centerX, y: 9.5, z: lot.y + edge / 2 + 2 },
+      { w: edge, h: 9, d: lot.height - 8, x: lot.x + edge / 2 + 2, y: 9.5, z: centerY },
+      { w: edge, h: 9, d: lot.height - 8, x: lot.x + lot.width - edge / 2 - 2, y: 9.5, z: centerY },
+      { w: lot.width * 0.3, h: 9, d: edge, x: lot.x + lot.width * 0.17, y: 9.5, z: lot.y + lot.height - edge / 2 - 2 },
+      { w: lot.width * 0.3, h: 9, d: edge, x: lot.x + lot.width * 0.83, y: 9.5, z: lot.y + lot.height - edge / 2 - 2 },
+    ]), hedge, 0, 0, 0));
+    scene.add(solid(new THREE.IcosahedronGeometry(11, 1), hedge, lot.x + lot.width - 20, 16, lot.y + 20));
 
     const flag = new THREE.Group();
     flag.add(solid(new THREE.CylinderGeometry(1.5, 1.5, 78, 5), lambert("#e9edf5"), 0, 39, 0));
@@ -441,7 +517,7 @@ export function createWorld(canvas, state, hotels, spaces) {
       const height = hotel.tall * HEIGHTS[hotel.buildings][slot];
       const piece = new THREE.Group();
       piece.position.set(lot.x + 25 + slotWidth * (slot + 0.5), 5, lot.y + lot.height * 0.4);
-      piece.userData = { width, depth, height };
+      piece.userData = { width, depth, height, slot };
       if (hotel.style === "lighthouse" && slot === 0) addLighthouse(piece, hotel.tall * 1.9);
       else addBuilding(piece, hotel.style, width, height, depth, wall, roof, trim);
       piece.visible = false;
@@ -475,8 +551,18 @@ export function createWorld(canvas, state, hotels, spaces) {
   }
 
   function addBuilding(piece, style, width, height, depth, wall, roof, trim) {
+    const slot = piece.userData.slot;
     piece.add(solid(facadeBox(width, height, depth), wall, 0, 0, 0));
     piece.add(solid(new THREE.BoxGeometry(width * 0.24, 20, 3), lambert("#3a2a1e"), 0, 10, depth / 2 + 1));
+    // an awning over the door, steps, and a balcony on every floor of the front
+    const front = [{ w: width * 0.44, h: 3, d: 14, x: 0, y: 25, z: depth / 2 + 7 }, { w: width * 0.4, h: 2, d: 8, x: 0, y: 1, z: depth / 2 + 4 }];
+    if (style !== "tower") {
+      for (let floor = 1; floor * 26 < height - 8; floor++) {
+        front.push({ w: width * 0.86, h: 2.4, d: 7, x: 0, y: floor * 26 + 5, z: depth / 2 + 3.5 });
+        front.push({ w: width * 0.86, h: 5, d: 1, x: 0, y: floor * 26 + 8, z: depth / 2 + 6.6 });
+      }
+    }
+    piece.add(solid(mergedBoxes(front), style === "tower" ? trim : paleStone, 0, 0, 0));
     if (style === "chalet" || style === "pitched") {
       const pitched = solid(new THREE.ConeGeometry(width * 0.78, 34, 4), roof, 0, height + 17, 0);
       pitched.rotation.y = Math.PI / 4;
@@ -486,15 +572,24 @@ export function createWorld(canvas, state, hotels, spaces) {
       return;
     }
     piece.add(solid(new THREE.BoxGeometry(width + 6, 5, depth + 6), roof, 0, height + 2.5, 0));
+    // a parapet around every flat roof
+    piece.add(solid(mergedBoxes([
+      { w: width + 6, h: 5, d: 2, x: 0, y: height + 7.5, z: depth / 2 + 2 }, { w: width + 6, h: 5, d: 2, x: 0, y: height + 7.5, z: -depth / 2 - 2 },
+      { w: 2, h: 5, d: depth + 6, x: width / 2 + 2, y: height + 7.5, z: 0 }, { w: 2, h: 5, d: depth + 6, x: -width / 2 - 2, y: height + 7.5, z: 0 },
+    ]), paleStone, 0, 0, 0));
     if (style === "dome") {
       piece.add(solid(new THREE.SphereGeometry(width * 0.36, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), trim, 0, height + 5, 0));
       piece.add(solid(new THREE.CylinderGeometry(1, 1, 18, 5), lambert("#ffd23f"), 0, height + 5 + width * 0.36 + 9, 0));
       return;
     }
     if (style === "tower") {
-      piece.add(solid(new THREE.CylinderGeometry(1.4, 1.4, 44, 5), lambert("#c7d0e0"), 0, height + 27, 0));
+      // helipad on the highest tower, a sky pool on the others
+      if (slot === 2) piece.add(solid(new THREE.BoxGeometry(width * 0.8, 1, depth * 0.8), helipadRoof, 0, height + 5.6, 0));
+      else piece.add(solid(new THREE.BoxGeometry(width * 0.6, 1.4, depth * 0.5), poolWater, 0, height + 5.8, 0));
+      if (slot !== 2) return;
+      piece.add(solid(new THREE.CylinderGeometry(1.4, 1.4, 44, 5), lambert("#c7d0e0"), width * 0.36, height + 27, -depth * 0.36));
       const beacon = new THREE.Mesh(new THREE.SphereGeometry(4, 8, 6), new THREE.MeshBasicMaterial({ color: "#ff3b3b" }));
-      beacon.position.set(0, height + 51, 0);
+      beacon.position.set(width * 0.36, height + 51, -depth * 0.36);
       beacon.userData.beacon = true;
       piece.add(beacon);
       return;
@@ -504,9 +599,20 @@ export function createWorld(canvas, state, hotels, spaces) {
         piece.add(solid(new THREE.CylinderGeometry(3, 3, 36, 8), lambert("#fffaf0"), -width / 2 + 8 + column * (width - 16) / 3, 18, depth / 2 + 6));
       }
       piece.add(solid(new THREE.BoxGeometry(width + 4, 6, 14), trim, 0, 39, depth / 2 + 4));
+      // roof garden
+      piece.add(solid(new THREE.BoxGeometry(width * 0.8, 1.6, depth * 0.7), hedge, 0, height + 5.8, 0));
+      piece.add(solid(new THREE.IcosahedronGeometry(8, 1), hedge, -width * 0.2, height + 14, 0));
+      piece.add(solid(new THREE.IcosahedronGeometry(6, 1), hedge, width * 0.22, height + 12, 4));
       return;
     }
-    piece.add(solid(new THREE.BoxGeometry(width * 0.3, 9, depth * 0.3), lambert("#9aa3b8"), -width * 0.2, height + 9.5, 0));
+    // plain flat roofs take turns: a pool with its deck, a tennis court
+    if (slot % 2 === 0) {
+      piece.add(solid(new THREE.BoxGeometry(width * 0.74, 1.2, depth * 0.66), paleStone, 0, height + 5.6, 0));
+      piece.add(solid(new THREE.BoxGeometry(width * 0.56, 1.6, depth * 0.44), poolWater, 0, height + 5.9, 0));
+      piece.add(solid(new THREE.ConeGeometry(6, 4, 8), lambert("#e63946"), width * 0.3, height + 13, depth * 0.24));
+    } else {
+      piece.add(solid(new THREE.BoxGeometry(width * 0.8, 1, depth * 0.84), tennisRoof, 0, height + 5.6, 0));
+    }
   }
 
   function addLighthouse(piece, height) {
@@ -793,7 +899,7 @@ export function createWorld(canvas, state, hotels, spaces) {
     view.materials.forEach((material, face) => {
       material.map = view.textures[order[face]];
     });
-    const land = { x: current.x + (die.kind === "number" ? 70 : -70) / current.zoom, z: current.z + 150 / current.zoom };
+    const land = { x: target.x + (die.kind === "number" ? 90 : -90) / target.zoom, z: target.z + 170 / target.zoom };
     view.throwing = {
       start: die.startedAt,
       land,
@@ -845,7 +951,7 @@ export function createWorld(canvas, state, hotels, spaces) {
   let target = { ...OVERVIEW };
 
   function updateCamera(now, seconds) {
-    const ease = 1 - Math.exp(-seconds * 2.8);
+    const ease = 1 - Math.exp(-seconds * 1.7); // unhurried moves, easy to follow
     current.x += (target.x - current.x) * ease;
     current.z += (target.z - current.z) * ease;
     current.zoom += (target.zoom - current.zoom) * ease;

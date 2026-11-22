@@ -183,8 +183,16 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
     resolve(id);
   }
 
+  // The camera stays with the team in turn: its car and the lots around it.
+  function showPlayer(player) {
+    board.focus(spacePoint(player.space), 1.5);
+  }
+
   // The game has two dice: the numbered one (moves and nights) and the permit one (building permission).
+  // The camera pulls back to the whole board for the throw; the caller brings it back where the action is.
   async function roll(kind, result, hex) {
+    board.overview();
+    await wait(700);
     const faces = kind === "number" ? [1, 2, 3, 4, 5, 6] : ["si", "no", "gratis", "doppio"];
     state.die = { visible: true, kind, faces, face: result, rolling: true, hex, startedAt: performance.now() };
     sound.dice();
@@ -214,7 +222,7 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
     while (remaining > 0 || occupiedByOther(player)) {
       remaining--;
       const next = (player.space + 1) % SPACES.length;
-      board.focus(spacePoint(next), 1.5);
+      board.focus(spacePoint(next), 1.7);
       player.move = { from: player.space, start: performance.now(), duration: HOP_MS };
       sound.step();
       await wait(HOP_MS);
@@ -341,6 +349,7 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
     await ask(player, status, [{ id: "roll", label: "Lancia: quante notti?", kind: "primary" }]);
     if (over) return;
     const nights = await rollNumber(owner.hex);
+    board.focus(lotCenter(index), 2.1);
     floatText("🌙".repeat(nights), "#fff", { x: 960, y: 330 });
     const amount = nights * HOTELS[index].rates[hotel.stage - 1];
     await pay(player, owner, amount, nights === 1 ? "1 notte" : nights + " notti");
@@ -397,6 +406,7 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
     const name = HOTELS[index].name;
     banner(player.name + " chiede il permesso per " + name, player.hex);
     const outcome = await roll("permit", PERMIT_FACES[Math.floor(Math.random() * PERMIT_FACES.length)], player.hex);
+    board.focus(lotCenter(index), 1.9);
     if (outcome === "no") {
       sound.buzzer();
       banner("Permesso NEGATO!", "#e63946");
@@ -532,7 +542,7 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
         turn.entrancesBought.push(index);
       }
       if (over) return;
-      board.overview();
+      showPlayer(player);
     }
   }
 
@@ -540,7 +550,7 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
   async function playTurn(player) {
     let again = true;
     while (again && !over && !player.bankrupt) {
-      board.overview();
+      showPlayer(player);
       note = "Tocca a " + player.name + ".";
       banner("Tocca a " + player.name, player.hex);
       await ask(player, "Tocca a voi!", [{ id: "roll", label: "Lancia il dado", kind: "primary" }]);
@@ -553,7 +563,7 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
         await payStay(player, hotelIndex);
         if (over || player.bankrupt) return;
       }
-      board.overview();
+      showPlayer(player);
       await actions(player, type, entranceRight);
       again = steps === 6;
       if (again && !over) {

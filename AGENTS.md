@@ -76,15 +76,37 @@ the hotel, a hotel is built by a crane with scaffolding, fast, and each hotel an
 character. Not AAA: elaborate indie quality, cared for in every detail. The phones are remote controls for the
 actions.
 
+More direction from the owner (2026-11-22), to be followed in all three games:
+
+- **Each game has its own visual style**, lighting and setting. The game-choice screen should become a
+  **triptych**: three panels, each showing its game's real 3D scene, animated and lit as in the game (not done
+  yet: the lobby is still the 2D scene, and only Grand Viale has a 3D scene).
+- **Detail**: every hotel must be a recognisable complex with its own equipment (pools, tennis courts, roof
+  terraces, gardens...), every area of the map its own character. Low detail reads as ugly: keep adding.
+- **Camera**: the whole board does not have to be visible. The camera stays with the team in turn, moves
+  between places at an unhurried pace so that everyone follows what is happening, closes in on the events, and
+  pulls back to the whole board for the dice, then returns.
+- **Sound**: realistic ambience (sea, birds, city, construction) mixed with music and with sounds for the game
+  events. Today there are only short synthesized effects (`shared/sound.js`): ambience and music are to do, and
+  need either audio files (an asset, to be approved) or much better synthesis.
+- The owner compares the result with the classic game and with AAA work and finds it far from both. The honest
+  limits: everything is procedural (no models, no photographic textures, no baked light) and the TV GPU is small.
+  Real models and textures (for example CC0 packs) would be the biggest step up and need the owner's approval
+  as assets. The board, the hotels and their names stay original: the classic game is a reference for the level
+  of richness, not something to reproduce.
+
 - 3D is drawn with **Three.js r160**, vendored as `src/web/vendor/three.module.min.js` (approved by the owner; the
   only third-party code in the project; no build step: it is imported as an ES module). Everything is procedural:
   geometry from Three.js primitives, textures painted on canvases. No model or image files.
 - `grandviale-world.js` is the scene: wooden table, board slab whose top is one painted canvas (meadow, beach,
   avenue, spaces with their symbols, cream frame), sea, mountains, plants, lamps, clouds, boats; per hotel a lot
   plate in the owner's colour, flag, label sprite, buildings by `style` (`lighthouse`, `chalet`, `pitched`,
-  `dome`, `palace`, `tower`, `flat`) and the leisure area; one crane + scaffold + dust lent to whichever piece is
+  `dome`, `palace`, `tower`, `flat`) with balconies, awnings, parapets and equipped roofs (pools, tennis courts,
+  helipad, roof garden), a hedge around the lot, and the leisure area; one crane + scaffold + dust lent to whichever piece is
   growing; cars and people; entrances (red carpet and canopy); the two dice. It only reads the game state each
-  frame and offers `focus(point, zoom)` / `overview()`; the camera gets lower and turns when it closes in.
+  frame and offers `focus(point, zoom)` / `overview()`; the camera gets lower and turns when it closes in. The
+  game keeps it on the team in turn (`showPlayer`), on the lot of an event, and on the whole board during a throw.
+  Small repeated details are merged into one mesh (`mergedBoxes`) to keep the draw calls low.
 - Dice: the game decides the result, the scene puts that face on top while the die is out of sight, then plays a
   scripted flight (bounces, spin that ends exactly at rest). No physics engine.
 - Stay: the game's `glide` + `hidden` + `night` flags become: the car pulls over, the guest walks to the door and
