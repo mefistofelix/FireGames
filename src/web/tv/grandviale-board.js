@@ -1,7 +1,10 @@
-// Grand Viale board. The world is a ground plane (x right, y towards the viewer, 1920x1080 units) seen from
-// above at an angle, plus a height axis: flat things (grass, road, lots) are drawn through one canvas transform,
-// upright things (buildings, trees, cars) at projected points, sorted back to front. A camera with a target
-// position and zoom follows the events; the game moves it with focus() and overview().
+// Grand Viale board: a holiday resort. A winding avenue loops between the mountains (top) and the beach
+// (bottom); hotels stand in the bends, each with its own architecture.
+//
+// The world is a ground plane (x right, y towards the viewer) seen from above at an angle, plus a height axis:
+// flat things are drawn through one canvas transform, upright things (buildings, trees, cars) at projected points,
+// sorted back to front. What never changes on the ground (road, spaces, meadow) is painted once on a layer.
+// A camera with a target position and zoom follows the events; the game moves it with focus() and overview().
 
 import { euro } from "../shared/config.js";
 import { drawCar, roundedRect } from "./scene.js";
@@ -10,9 +13,12 @@ const WIDTH = 1920;
 const HEIGHT = 1080;
 const GROUND_SQUASH = 0.72; // how much the ground is flattened by the viewing angle
 const SCREEN_CENTER = { x: 960, y: 590 };
-const OVERVIEW = { x: 960, y: 600, zoom: 1 };
-const RING = { left: 420, right: 1500, top: 380, bottom: 840, radius: 150 };
+const OVERVIEW = { x: 960, y: 610, zoom: 1 };
 const SPACE_COUNT = 28;
+const ROAD_WIDTH = 96;
+const BEACH_Y = 885;
+const SEA_Y = 1035;
+const LAYER = { x: -300, y: -150, width: 2520, height: 1250, scale: 1.25 }; // world rectangle of the painted layer
 
 const TILES = {
   bank: { color: "#ffd23f", icon: "🏦" },
@@ -39,49 +45,74 @@ const PIPS = {
   6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]],
 };
 
-const TREES = [
-  [150, 200, 70], [300, 300, 55], [420, 170, 60], [110, 380, 50], [1500, 160, 60], [1700, 210, 75], [1830, 340, 55],
-  [120, 880, 65], [300, 990, 70], [440, 920, 50], [1480, 960, 55], [960, 250, 45], [960, 990, 45],
+// The avenue passes through these points, clockwise on screen, starting at the Banca (bottom centre).
+const AVENUE = [
+  [960, 800], [640, 830], [360, 760], [230, 560], [330, 350], [560, 270], [760, 360], [900, 500],
+  [1080, 420], [1220, 270], [1480, 250], [1680, 400], [1700, 620], [1540, 790], [1260, 830],
 ];
-const POND = { x: 1730, y: 930, radius: 120 };
+
+// [x, y, size, kind]
+const PLANTS = [
+  [90, 420, 60, "tree"], [110, 700, 70, "tree"], [730, 590, 50, "tree"], [1120, 650, 55, "tree"],
+  [1580, 540, 50, "tree"], [1850, 320, 65, "tree"], [1830, 700, 70, "tree"], [1110, 170, 55, "tree"],
+  [650, 140, 60, "tree"], [1340, 120, 55, "tree"], [1880, 520, 50, "tree"],
+  [60, 270, 80, "pine"], [390, 120, 70, "pine"], [450, 175, 55, "pine"], [1500, 110, 75, "pine"],
+  [1560, 80, 60, "pine"], [1885, 170, 70, "pine"],
+  [290, 955, 80, "palm"], [730, 965, 70, "palm"], [960, 950, 85, "palm"], [1180, 960, 70, "palm"], [1650, 955, 80, "palm"],
+];
+const MOUNTAINS = [[70, 60, 330], [300, 40, 420], [560, 55, 300], [-120, 70, 260]]; // [x, y, height]
+const MEADOW_PATCHES = [[300, 520, 200], [1000, 620, 160], [1450, 480, 220], [800, 200, 180], [1750, 760, 170], [150, 150, 150]];
 const BUILDING_HEIGHTS = [0.62, 0.82, 1, 0.9];
 
-// The ring, clockwise on screen from the middle of the bottom side: pieces with a length and a point function.
-const RADIUS = RING.radius;
-const HALF_STRAIGHT = (RING.right - RING.left) / 2 - RADIUS;
-const SIDE = RING.bottom - RING.top - 2 * RADIUS;
-const ARC = Math.PI * RADIUS / 2;
-const MIDDLE_X = (RING.left + RING.right) / 2;
-
-function arcPoint(centerX, centerY, angle) {
-  return { x: centerX + RADIUS * Math.cos(angle), y: centerY + RADIUS * Math.sin(angle) };
+// Dense polyline of a closed Catmull-Rom curve through AVENUE, with the distance walked up to each sample.
+function buildPath() {
+  const samples = [];
+  const count = AVENUE.length;
+  for (let i = 0; i < count; i++) {
+    const [p0, p1, p2, p3] = [-1, 0, 1, 2].map((offset) => AVENUE[(i + offset + count) % count]);
+    for (let step = 0; step < 24; step++) {
+      const t = step / 24;
+      const blend = (a, b, c, d) => 0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (3 * b - a - 3 * c + d) * t * t * t);
+      samples.push({ x: blend(p0[0], p1[0], p2[0], p3[0]), y: blend(p0[1], p1[1], p2[1], p3[1]) });
+    }
+  }
+  let walked = 0;
+  samples.forEach((sample, index) => {
+    sample.at = walked;
+    const next = samples[(index + 1) % samples.length];
+    walked += Math.hypot(next.x - sample.x, next.y - sample.y);
+  });
+  return { samples, length: walked };
 }
 
-const PIECES = [
-  { length: HALF_STRAIGHT, at: (offset) => ({ x: MIDDLE_X - offset, y: RING.bottom }) },
-  { length: ARC, at: (offset) => arcPoint(RING.left + RADIUS, RING.bottom - RADIUS, Math.PI / 2 + offset / RADIUS) },
-  { length: SIDE, at: (offset) => ({ x: RING.left, y: RING.bottom - RADIUS - offset }) },
-  { length: ARC, at: (offset) => arcPoint(RING.left + RADIUS, RING.top + RADIUS, Math.PI + offset / RADIUS) },
-  { length: 2 * HALF_STRAIGHT, at: (offset) => ({ x: RING.left + RADIUS + offset, y: RING.top }) },
-  { length: ARC, at: (offset) => arcPoint(RING.right - RADIUS, RING.top + RADIUS, 1.5 * Math.PI + offset / RADIUS) },
-  { length: SIDE, at: (offset) => ({ x: RING.right, y: RING.top + RADIUS + offset }) },
-  { length: ARC, at: (offset) => arcPoint(RING.right - RADIUS, RING.bottom - RADIUS, offset / RADIUS) },
-  { length: HALF_STRAIGHT, at: (offset) => ({ x: RING.right - RADIUS - offset, y: RING.bottom }) },
-];
-const PERIMETER = PIECES.reduce((sum, piece) => sum + piece.length, 0);
+const PATH = buildPath();
 
-// World point of a position along the ring; progress is a space index and may be fractional.
+// World point of a position along the avenue; progress is a space index and may be fractional.
 function ringPoint(progress) {
-  let distance = (((progress % SPACE_COUNT) + SPACE_COUNT) % SPACE_COUNT) * PERIMETER / SPACE_COUNT;
-  for (const piece of PIECES) {
-    if (distance <= piece.length) return piece.at(distance);
-    distance -= piece.length;
-  }
-  return PIECES[0].at(0);
+  const distance = (((progress % SPACE_COUNT) + SPACE_COUNT) % SPACE_COUNT) * PATH.length / SPACE_COUNT;
+  const samples = PATH.samples;
+  let index = samples.length - 1;
+  while (samples[index].at > distance) index--;
+  const from = samples[index];
+  const to = samples[(index + 1) % samples.length];
+  const span = Math.hypot(to.x - from.x, to.y - from.y);
+  const t = (distance - from.at) / span;
+  return { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
 }
 
 export function spacePoint(index) {
   return ringPoint(index);
+}
+
+// Indexes of the spaces closest to a point: the spaces a hotel standing there is "next to".
+export function nearestSpaces(point, count) {
+  const byDistance = [];
+  for (let index = 0; index < SPACE_COUNT; index++) {
+    const space = ringPoint(index);
+    byDistance.push({ index, distance: Math.hypot(space.x - point.x, space.y - point.y) });
+  }
+  byDistance.sort((a, b) => a.distance - b.distance);
+  return byDistance.slice(0, count).map((entry) => entry.index).sort((a, b) => a - b);
 }
 
 // Centre, in screen units, of a player's chip in the top bar.
@@ -102,8 +133,82 @@ function easeOutBack(t) {
   return 1 + (overshoot + 1) * Math.pow(t - 1, 3) + overshoot * Math.pow(t - 1, 2);
 }
 
+function tracePath(context) {
+  context.beginPath();
+  PATH.samples.forEach((sample, index) => {
+    if (index === 0) context.moveTo(sample.x, sample.y);
+    else context.lineTo(sample.x, sample.y);
+  });
+  context.closePath();
+}
+
+// Paints once what never changes on the ground. Icons are stretched so they look upright after the squash.
+function paintLayer(spaces) {
+  const layer = document.createElement("canvas");
+  layer.width = LAYER.width * LAYER.scale;
+  layer.height = LAYER.height * LAYER.scale;
+  const context = layer.getContext("2d");
+  context.setTransform(LAYER.scale, 0, 0, LAYER.scale, -LAYER.x * LAYER.scale, -LAYER.y * LAYER.scale);
+
+  for (const [x, y, radius] of MEADOW_PATCHES) {
+    const patch = context.createRadialGradient(x, y, radius * 0.2, x, y, radius);
+    patch.addColorStop(0, "rgba(40, 120, 60, 0.28)");
+    patch.addColorStop(1, "rgba(40, 120, 60, 0)");
+    context.fillStyle = patch;
+    context.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+  }
+  const flowers = ["#fff", "#ffd23f", "#ff8fab"];
+  for (let i = 0; i < 260; i++) {
+    const x = (i * 733) % 2400 - 250;
+    const y = (i * 397) % 1000 - 120;
+    if (y > BEACH_Y - 20) continue;
+    context.fillStyle = flowers[i % 3];
+    context.fillRect(x, y, 5, 5);
+  }
+
+  context.lineJoin = "round";
+  tracePath(context);
+  context.strokeStyle = "rgba(0, 0, 0, 0.18)";
+  context.lineWidth = ROAD_WIDTH + 34;
+  context.stroke();
+  context.strokeStyle = "#f3ead8";
+  context.lineWidth = ROAD_WIDTH + 16;
+  context.stroke();
+  context.strokeStyle = "#454a66";
+  context.lineWidth = ROAD_WIDTH;
+  context.stroke();
+  context.strokeStyle = "rgba(255, 255, 255, 0.35)";
+  context.lineWidth = 4;
+  context.setLineDash([18, 22]);
+  context.stroke();
+  context.setLineDash([]);
+
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.font = "36px system-ui, sans-serif";
+  for (let index = 0; index < SPACE_COUNT; index++) {
+    const point = ringPoint(index);
+    const tile = TILES[spaces[index]];
+    context.fillStyle = tile.color;
+    context.beginPath();
+    context.arc(point.x, point.y, 44, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "#fffaf0";
+    context.beginPath();
+    context.arc(point.x, point.y, 35, 0, Math.PI * 2);
+    context.fill();
+    context.save();
+    context.translate(point.x, point.y);
+    context.scale(1, 1 / GROUND_SQUASH);
+    context.fillText(tile.icon, 0, 1);
+    context.restore();
+  }
+  return layer;
+}
+
 export function createBoard(canvas, state, hotels, spaces) {
   const context = canvas.getContext("2d");
+  const layer = paintLayer(spaces);
   const camera = { ...OVERVIEW };
   let target = { ...OVERVIEW };
   let running = true;
@@ -146,155 +251,302 @@ export function createBoard(canvas, state, hotels, spaces) {
         x: player.glide.from.x + (player.glide.to.x - player.glide.from.x) * t,
         y: player.glide.from.y + (player.glide.to.y - player.glide.from.y) * t,
         hop: 0,
+        progress: player.space,
       };
     }
     if (player.move) {
       const t = Math.min(1, (now - player.move.start) / player.move.duration);
       const point = ringPoint(player.move.from + t);
-      return { x: point.x, y: point.y, hop: Math.sin(Math.PI * t) * 34 };
+      return { x: point.x, y: point.y, hop: Math.sin(Math.PI * t) * 34, progress: player.move.from + t };
     }
     const point = ringPoint(player.space);
-    return { x: point.x, y: point.y, hop: 0 };
+    return { x: point.x, y: point.y, hop: 0, progress: player.space };
   }
 
   function drawGround(now) {
     const time = now / 1000;
-    context.fillStyle = "#6fbf73";
-    context.fillRect(-3000, -3000, 8000, 8000);
-    context.fillStyle = "rgba(255, 255, 255, 0.06)";
-    for (let stripe = -3000; stripe < 5000; stripe += 160) context.fillRect(stripe, -3000, 80, 8000);
-
-    context.fillStyle = "rgba(20, 40, 30, 0.10)";
-    for (let i = 0; i < 4; i++) {
-      const x = ((time * (14 + i * 5) + i * 700) % 3200) - 600;
+    context.fillStyle = "#f2dfa7";
+    context.fillRect(-3000, BEACH_Y, 8000, SEA_Y - BEACH_Y + 40);
+    const sea = context.createLinearGradient(0, SEA_Y, 0, SEA_Y + 320);
+    sea.addColorStop(0, "#58c4dd");
+    sea.addColorStop(1, "#2a7fc0");
+    context.fillStyle = sea;
+    context.fillRect(-3000, SEA_Y, 8000, 3000);
+    context.strokeStyle = "rgba(255, 255, 255, 0.8)";
+    context.lineWidth = 7;
+    for (let row = 0; row < 4; row++) {
+      context.globalAlpha = row === 0 ? 0.9 : 0.35;
       context.beginPath();
-      context.ellipse(x, 250 + i * 230, 260, 110, 0, 0, Math.PI * 2);
-      context.fill();
-    }
-
-    context.fillStyle = "#4f9fd1";
-    context.beginPath();
-    context.arc(POND.x, POND.y, POND.radius, 0, Math.PI * 2);
-    context.fill();
-    context.strokeStyle = "rgba(255, 255, 255, 0.6)";
-    context.lineWidth = 3;
-    for (let i = 0; i < 3; i++) {
-      const growth = (time * 0.3 + i / 3) % 1;
-      context.globalAlpha = 1 - growth;
-      context.beginPath();
-      context.arc(POND.x - 30 + i * 30, POND.y, 10 + growth * 70, 0, Math.PI * 2);
+      for (let x = -400; x <= 2400; x += 40) {
+        const y = SEA_Y + row * 62 + Math.sin(x / 110 + time * 1.6 + row * 2) * 9 + Math.sin(time * 0.9) * 6;
+        if (x === -400) context.moveTo(x, y);
+        else context.lineTo(x, y);
+      }
       context.stroke();
     }
     context.globalAlpha = 1;
 
+    context.drawImage(layer, LAYER.x, LAYER.y, LAYER.width, LAYER.height);
+
     hotels.forEach((hotel, index) => {
       const lot = hotel.lot;
       const owner = state.hotels[index].owner;
-      context.fillStyle = owner ? shade(owner.hex, 1.75) : "#e9dcc0";
-      roundedRect(context, lot.x, lot.y, lot.width, lot.height, 22);
+      context.fillStyle = "rgba(0, 0, 0, 0.14)";
+      roundedRect(context, lot.x + 6, lot.y + 10, lot.width, lot.height, 44);
+      context.fillStyle = owner ? shade(owner.hex, 1.72) : "#ead9b0";
+      roundedRect(context, lot.x, lot.y, lot.width, lot.height, 44);
       context.lineWidth = owner ? 10 : 4;
-      context.strokeStyle = owner ? owner.hex : "rgba(90, 70, 40, 0.5)";
+      context.strokeStyle = owner ? owner.hex : "rgba(110, 85, 45, 0.55)";
       context.setLineDash(owner ? [] : [16, 12]);
       context.stroke();
       context.setLineDash([]);
     });
 
-    context.lineJoin = "round";
-    context.beginPath();
-    context.moveTo(RING.left + RADIUS, RING.top);
-    context.arcTo(RING.right, RING.top, RING.right, RING.bottom, RADIUS);
-    context.arcTo(RING.right, RING.bottom, RING.left, RING.bottom, RADIUS);
-    context.arcTo(RING.left, RING.bottom, RING.left, RING.top, RADIUS);
-    context.arcTo(RING.left, RING.top, RING.right, RING.top, RADIUS);
-    context.closePath();
-    context.strokeStyle = "#f1e9da";
-    context.lineWidth = 112;
-    context.stroke();
-    context.strokeStyle = "#3b3f58";
-    context.lineWidth = 100;
-    context.stroke();
-
-    const activeSpace = state.players[state.current].space;
-    for (let index = 0; index < SPACE_COUNT; index++) {
-      const point = ringPoint(index);
-      const tile = TILES[spaces[index]];
-      if (index === activeSpace && !state.finished) {
-        context.fillStyle = "rgba(255, 255, 255, " + (0.25 + 0.2 * Math.sin(time * 5)) + ")";
-        context.beginPath();
-        context.arc(point.x, point.y, 56, 0, Math.PI * 2);
-        context.fill();
-      }
-      context.fillStyle = tile.color;
+    if (!state.finished) {
+      const point = ringPoint(state.players[state.current].space);
+      context.strokeStyle = "rgba(255, 255, 255, " + (0.55 + 0.35 * Math.sin(time * 5)) + ")";
+      context.lineWidth = 8;
       context.beginPath();
-      context.arc(point.x, point.y, 43, 0, Math.PI * 2);
-      context.fill();
-      context.fillStyle = "#fffaf0";
-      context.beginPath();
-      context.arc(point.x, point.y, 34, 0, Math.PI * 2);
-      context.fill();
+      context.arc(point.x, point.y, 52, 0, Math.PI * 2);
+      context.stroke();
     }
   }
 
-  function drawTree(tree) {
-    const [x, y, size] = tree;
-    const base = project(x, y, 0);
-    const zoom = camera.zoom;
+  function drawShadow(base, width) {
     context.fillStyle = "rgba(0, 0, 0, 0.18)";
     context.beginPath();
-    context.ellipse(base.x + size * 0.3 * zoom, base.y, size * 0.7 * zoom, size * 0.22 * zoom, 0, 0, Math.PI * 2);
-    context.fill();
-    context.fillStyle = "#5a3d2b";
-    context.fillRect(base.x - 7 * zoom, base.y - size * zoom, 14 * zoom, size * zoom);
-    context.fillStyle = "#1f7a55";
-    context.beginPath();
-    context.arc(base.x, base.y - size * 1.25 * zoom, size * 0.62 * zoom, 0, Math.PI * 2);
-    context.fill();
-    context.fillStyle = "#2f9b6c";
-    context.beginPath();
-    context.arc(base.x - size * 0.18 * zoom, base.y - size * 1.4 * zoom, size * 0.38 * zoom, 0, Math.PI * 2);
+    context.ellipse(base.x + width * 0.25, base.y, width, width * 0.3, 0, 0, Math.PI * 2);
     context.fill();
   }
 
-  // One building: a box seen from the front and above (front wall, roof, a darker strip for the side).
-  function drawBuilding(hotel, lot, slot, grow, now) {
+  function drawPlant(plant, now) {
+    const [x, y, size, kind] = plant;
+    const base = project(x, y, 0);
     const zoom = camera.zoom;
-    const slotWidth = (lot.width - 40) / 4;
+    const tall = size * zoom;
+    drawShadow(base, tall * 0.6);
+    if (kind === "pine") {
+      context.fillStyle = "#5a3d2b";
+      context.fillRect(base.x - 5 * zoom, base.y - tall * 0.4, 10 * zoom, tall * 0.4);
+      for (let level = 0; level < 3; level++) {
+        const bottom = base.y - tall * (0.3 + level * 0.42);
+        const half = tall * (0.5 - level * 0.11);
+        context.fillStyle = level === 2 ? "#2f8f6a" : "#1f6e54";
+        context.beginPath();
+        context.moveTo(base.x - half, bottom);
+        context.lineTo(base.x, bottom - tall * 0.75);
+        context.lineTo(base.x + half, bottom);
+        context.fill();
+      }
+      return;
+    }
+    if (kind === "palm") {
+      const sway = Math.sin(now / 900 + x) * 0.06;
+      const top = { x: base.x + tall * 0.25, y: base.y - tall * 1.5 };
+      context.strokeStyle = "#8a5a35";
+      context.lineWidth = 10 * zoom;
+      context.lineCap = "round";
+      context.beginPath();
+      context.moveTo(base.x, base.y);
+      context.quadraticCurveTo(base.x - tall * 0.1, base.y - tall * 0.8, top.x, top.y);
+      context.stroke();
+      context.strokeStyle = "#2f9b5c";
+      context.lineWidth = 9 * zoom;
+      for (let leaf = 0; leaf < 6; leaf++) {
+        const angle = -Math.PI + leaf * Math.PI / 5 + sway;
+        context.beginPath();
+        context.moveTo(top.x, top.y);
+        context.quadraticCurveTo(top.x + Math.cos(angle) * tall * 0.5, top.y + Math.sin(angle) * tall * 0.5 - tall * 0.2,
+          top.x + Math.cos(angle) * tall * 0.8, top.y + Math.sin(angle) * tall * 0.3 + tall * 0.1);
+        context.stroke();
+      }
+      context.lineCap = "butt";
+      return;
+    }
+    context.fillStyle = "#5a3d2b";
+    context.fillRect(base.x - 7 * zoom, base.y - tall, 14 * zoom, tall);
+    context.fillStyle = "#1f7a55";
+    context.beginPath();
+    context.arc(base.x, base.y - tall * 1.25, tall * 0.62, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "#2f9b6c";
+    context.beginPath();
+    context.arc(base.x - tall * 0.18, base.y - tall * 1.4, tall * 0.38, 0, Math.PI * 2);
+    context.fill();
+  }
+
+  function drawMountain(mountain) {
+    const [x, y, height] = mountain;
+    const base = project(x, y, 0);
+    const tall = height * camera.zoom;
+    const half = tall * 0.75;
+    context.fillStyle = "#7d8fb3";
+    context.beginPath();
+    context.moveTo(base.x - half, base.y);
+    context.lineTo(base.x, base.y - tall);
+    context.lineTo(base.x + half, base.y);
+    context.fill();
+    context.fillStyle = "#5f7198";
+    context.beginPath();
+    context.moveTo(base.x, base.y - tall);
+    context.lineTo(base.x + half, base.y);
+    context.lineTo(base.x + half * 0.2, base.y);
+    context.fill();
+    context.fillStyle = "#fff";
+    context.beginPath();
+    context.moveTo(base.x, base.y - tall);
+    context.lineTo(base.x - half * 0.3, base.y - tall * 0.7);
+    context.lineTo(base.x - half * 0.1, base.y - tall * 0.76);
+    context.lineTo(base.x + half * 0.08, base.y - tall * 0.68);
+    context.lineTo(base.x + half * 0.3, base.y - tall * 0.7);
+    context.fill();
+  }
+
+  function drawBoat(index, now) {
+    const x = ((now / 1000 * (18 + index * 9) + index * 900) % 2600) - 300;
+    const base = project(x, SEA_Y + 110 + index * 70, 0);
+    const zoom = camera.zoom;
+    const bob = Math.sin(now / 500 + index) * 4 * zoom;
+    context.fillStyle = "#fff";
+    context.beginPath();
+    context.moveTo(base.x, base.y - 90 * zoom + bob);
+    context.lineTo(base.x + 46 * zoom, base.y - 16 * zoom + bob);
+    context.lineTo(base.x, base.y - 16 * zoom + bob);
+    context.fill();
+    context.fillStyle = index ? "#e63946" : "#ffb703";
+    context.beginPath();
+    context.moveTo(base.x - 6 * zoom, base.y - 80 * zoom + bob);
+    context.lineTo(base.x - 6 * zoom, base.y - 16 * zoom + bob);
+    context.lineTo(base.x - 40 * zoom, base.y - 16 * zoom + bob);
+    context.fill();
+    context.fillStyle = "#5a3d2b";
+    roundedRect(context, base.x - 50 * zoom, base.y - 12 * zoom + bob, 104 * zoom, 18 * zoom, 9 * zoom);
+  }
+
+  // The first building of the lighthouse inn: a striped tower with a turning beam.
+  function drawLighthouse(base, grow, now) {
+    const zoom = camera.zoom;
+    const height = 210 * grow * zoom;
+    const bottom = 30 * zoom;
+    const top = 19 * zoom;
+    drawShadow(base, 40 * zoom);
+    for (let band = 0; band < 5; band++) {
+      const from = band / 5;
+      const to = (band + 1) / 5;
+      const halfFrom = bottom + (top - bottom) * from;
+      const halfTo = bottom + (top - bottom) * to;
+      context.fillStyle = band % 2 ? "#e63946" : "#fff";
+      context.beginPath();
+      context.moveTo(base.x - halfFrom, base.y - height * from);
+      context.lineTo(base.x + halfFrom, base.y - height * from);
+      context.lineTo(base.x + halfTo, base.y - height * to);
+      context.lineTo(base.x - halfTo, base.y - height * to);
+      context.fill();
+    }
+    context.fillStyle = "#31456b";
+    context.fillRect(base.x - 26 * zoom, base.y - height - 8 * zoom, 52 * zoom, 8 * zoom);
+    context.fillStyle = "#fff3b0";
+    context.fillRect(base.x - 15 * zoom, base.y - height - 36 * zoom, 30 * zoom, 28 * zoom);
+    context.fillStyle = "#e63946";
+    context.beginPath();
+    context.moveTo(base.x - 22 * zoom, base.y - height - 36 * zoom);
+    context.lineTo(base.x, base.y - height - 62 * zoom);
+    context.lineTo(base.x + 22 * zoom, base.y - height - 36 * zoom);
+    context.fill();
+    if (grow < 1) return;
+    const sweep = Math.sin(now / 1100);
+    const reach = 300 * zoom;
+    const origin = { x: base.x, y: base.y - height - 22 * zoom };
+    const beam = context.createLinearGradient(origin.x, 0, origin.x + sweep * reach, 0);
+    beam.addColorStop(0, "rgba(255, 243, 176, 0.75)");
+    beam.addColorStop(1, "rgba(255, 243, 176, 0)");
+    context.fillStyle = beam;
+    context.beginPath();
+    context.moveTo(origin.x, origin.y);
+    context.lineTo(origin.x + sweep * reach, origin.y - 46 * zoom);
+    context.lineTo(origin.x + sweep * reach, origin.y + 46 * zoom);
+    context.fill();
+  }
+
+  // One building: a box seen from the front and above, finished according to the hotel's style.
+  function drawBuilding(hotel, slot, grow, now) {
+    const lot = hotel.lot;
+    const zoom = camera.zoom;
+    const slotWidth = (lot.width - 50) / 4;
+    const base = project(lot.x + 30 + slot * slotWidth, lot.y + lot.height * 0.5, 0);
+    if (hotel.style === "lighthouse" && slot === 0) {
+      drawLighthouse({ x: base.x + slotWidth * zoom * 0.45, y: base.y }, grow, now);
+      return;
+    }
     const width = (slotWidth - 12) * zoom;
     const depth = 50 * GROUND_SQUASH * zoom;
-    const fullHeight = (lot.height > 200 ? 170 : 105) * BUILDING_HEIGHTS[slot];
-    const height = fullHeight * grow * zoom;
-    const base = project(lot.x + 26 + slot * slotWidth, lot.y + lot.height * 0.62, 0);
+    const height = hotel.tall * BUILDING_HEIGHTS[slot] * grow * zoom;
+    const top = base.y - height;
+    const glass = hotel.style === "tower";
 
     context.fillStyle = "rgba(0, 0, 0, 0.22)";
-    context.fillRect(base.x + 10 * zoom, base.y - 4 * zoom, width, 14 * zoom);
-    context.fillStyle = shade(hotel.accent, 0.82);
-    context.fillRect(base.x, base.y - height, width, height);
-    context.fillStyle = shade(hotel.accent, 0.62);
-    context.fillRect(base.x + width * 0.86, base.y - height, width * 0.14, height);
-    context.fillStyle = shade(hotel.accent, 1.35);
-    context.fillRect(base.x, base.y - height - depth, width, depth);
-    context.fillStyle = shade(hotel.accent, 0.5);
-    context.fillRect(base.x, base.y - height - 3 * zoom, width, 3 * zoom);
+    context.fillRect(base.x + 12 * zoom, base.y - 4 * zoom, width, 16 * zoom);
+    context.fillStyle = shade(hotel.accent, glass ? 0.6 : 0.85);
+    context.fillRect(base.x, top, width, height);
+    context.fillStyle = shade(hotel.accent, glass ? 0.42 : 0.64);
+    context.fillRect(base.x + width * 0.86, top, width * 0.14, height);
+    context.fillStyle = shade(hotel.accent, 1.38);
+    context.fillRect(base.x, top - depth, width, depth);
 
-    const rows = Math.floor((height - 26 * zoom) / (24 * zoom));
+    const rowHeight = (glass ? 17 : 24) * zoom;
+    const rows = Math.floor((height - 26 * zoom) / rowHeight);
     for (let row = 0; row < rows; row++) {
       for (let column = 0; column < 3; column++) {
         const lit = Math.sin(now / 900 + row * 3.1 + column * 1.7 + slot * 5) > -0.2 || night > 0.3;
-        context.fillStyle = lit ? "#fff3b0" : "#31456b";
-        context.fillRect(base.x + (8 + column * 17) * zoom, base.y - height + (10 + row * 24) * zoom, 11 * zoom, 14 * zoom);
+        context.fillStyle = lit ? (glass ? "#c9f1ff" : "#fff3b0") : (glass ? "#3f78b3" : "#31456b");
+        context.fillRect(base.x + (8 + column * 17) * zoom, top + 10 * zoom + row * rowHeight, 11 * zoom, rowHeight * 0.6);
       }
     }
     context.fillStyle = "#3a2a1e";
     context.fillRect(base.x + width * 0.36, base.y - 20 * zoom, width * 0.24, 20 * zoom);
+
+    if (hotel.style === "chalet" || hotel.style === "pitched") {
+      context.fillStyle = hotel.style === "chalet" ? "#fff" : "#b5523b";
+      context.beginPath();
+      context.moveTo(base.x - 6 * zoom, top);
+      context.lineTo(base.x + width / 2, top - depth - 34 * zoom);
+      context.lineTo(base.x + width + 6 * zoom, top);
+      context.fill();
+      context.fillStyle = "#6b4630";
+      context.fillRect(base.x - 6 * zoom, top - 3 * zoom, width + 12 * zoom, 6 * zoom);
+    }
+    if (hotel.style === "dome") {
+      context.fillStyle = shade(hotel.accent, 1.6);
+      context.beginPath();
+      context.arc(base.x + width / 2, top - depth / 2, width * 0.36, Math.PI, 0);
+      context.fill();
+      context.fillStyle = "#ffd23f";
+      context.fillRect(base.x + width / 2 - 2 * zoom, top - depth / 2 - width * 0.36 - 16 * zoom, 4 * zoom, 16 * zoom);
+    }
+    if (glass) {
+      context.fillStyle = "#c7d0e0";
+      context.fillRect(base.x + width / 2 - 2 * zoom, top - depth - 40 * zoom, 4 * zoom, 40 * zoom);
+      context.fillStyle = Math.sin(now / 300) > 0 ? "#ff4d4d" : "#7a1f1f";
+      context.beginPath();
+      context.arc(base.x + width / 2, top - depth - 42 * zoom, 5 * zoom, 0, Math.PI * 2);
+      context.fill();
+    }
+    if (hotel.style === "palace") {
+      context.fillStyle = "#fff";
+      for (let column = 0; column < 4; column++) {
+        context.fillRect(base.x + (4 + column * (width / zoom - 14) / 3) * zoom, base.y - 34 * zoom, 6 * zoom, 34 * zoom);
+      }
+      context.fillStyle = shade(hotel.accent, 1.5);
+      context.fillRect(base.x - 3 * zoom, base.y - 40 * zoom, width + 6 * zoom, 7 * zoom);
+    }
   }
 
   function drawHotel(index, now) {
-    const hotel = hotels[index];
     const status = state.hotels[index];
     for (let slot = 0; slot < status.stage; slot++) {
       const newest = slot === status.stage - 1;
       const t = newest ? Math.min(1, (now - status.builtAt) / 900) : 1;
-      drawBuilding(hotel, hotel.lot, slot, Math.max(0.02, easeOutBack(t)), now);
+      drawBuilding(hotels[index], slot, Math.max(0.02, easeOutBack(t)), now);
     }
   }
 
@@ -316,8 +568,8 @@ export function createBoard(canvas, state, hotels, spaces) {
     const hotel = hotels[index];
     const status = state.hotels[index];
     const lot = hotel.lot;
-    const point = project(lot.x + lot.width / 2, lot.y + lot.height - 16, 0);
-    const size = 23 * Math.min(1.5, Math.max(1, camera.zoom));
+    const point = project(lot.x + lot.width / 2, lot.y + lot.height - 8, 0);
+    const size = 21 * Math.min(1.5, Math.max(1, camera.zoom));
     let detail = "In vendita · " + euro(hotel.land);
     if (status.owner) detail = status.owner.name;
     if (status.stage) detail = status.owner.name + " · notte " + euro(hotel.rates[status.stage - 1]);
@@ -335,9 +587,11 @@ export function createBoard(canvas, state, hotels, spaces) {
 
   function drawUpright(now) {
     const items = [];
-    for (const tree of TREES) items.push({ y: tree[1], draw: () => drawTree(tree) });
+    for (const mountain of MOUNTAINS) items.push({ y: mountain[1], draw: () => drawMountain(mountain) });
+    for (const plant of PLANTS) items.push({ y: plant[1], draw: () => drawPlant(plant, now) });
+    for (let boat = 0; boat < 2; boat++) items.push({ y: SEA_Y + 110 + boat * 70, draw: () => drawBoat(boat, now) });
     hotels.forEach((hotel, index) => {
-      items.push({ y: hotel.lot.y + hotel.lot.height * 0.62, draw: () => drawHotel(index, now) });
+      items.push({ y: hotel.lot.y + hotel.lot.height * 0.5, draw: () => drawHotel(index, now) });
     });
     for (const [space, index] of state.entranceAt) {
       items.push({ y: ringPoint(space).y - 1, draw: () => drawEntrance(space, index) });
@@ -349,31 +603,13 @@ export function createBoard(canvas, state, hotels, spaces) {
         y: point.y + 2,
         draw: () => {
           const screen = project(point.x + (index - (state.players.length - 1) / 2) * 16, point.y + 14, point.hop);
-          const direction = point.y > 610 ? -1 : 1;
-          if (index === state.current && !state.finished) {
-            context.strokeStyle = player.hex;
-            context.lineWidth = 5 * camera.zoom;
-            context.beginPath();
-            context.ellipse(screen.x, screen.y + point.hop * camera.zoom, (52 + 5 * Math.sin(now / 160)) * camera.zoom,
-              16 * camera.zoom, 0, 0, Math.PI * 2);
-            context.stroke();
-          }
+          const direction = ringPoint(point.progress + 0.2).x >= ringPoint(point.progress).x ? 1 : -1;
           drawCar(context, screen.x, screen.y, 0.52 * camera.zoom, player.hex, 0, direction);
         },
       });
     });
-    // the icons of the spaces lie on the ground: before anything that stands on it
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.font = 34 * camera.zoom + "px system-ui, sans-serif";
-    for (let index = 0; index < SPACE_COUNT; index++) {
-      const point = project(ringPoint(index).x, ringPoint(index).y, 0);
-      context.fillText(TILES[spaces[index]].icon, point.x, point.y + 2);
-    }
-    context.textBaseline = "alphabetic";
     items.sort((a, b) => a.y - b.y);
     for (const item of items) item.draw();
-
     hotels.forEach((hotel, index) => drawLotLabel(index));
 
     for (const effect of state.effects) {
@@ -528,7 +764,7 @@ export function createBoard(canvas, state, hotels, spaces) {
     state.effects = state.effects.filter((effect) => now - effect.start < effect.duration);
 
     context.setTransform(1, 0, 0, 1, 0, 0);
-    context.fillStyle = "#6fbf73";
+    context.fillStyle = "#74c476";
     context.fillRect(0, 0, canvas.width, canvas.height);
     useGround();
     drawGround(now);

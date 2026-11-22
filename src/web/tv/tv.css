@@ -168,17 +168,18 @@ h1 span {
 /* The question of the current team, answered with the remote. */
 #menu {
   position: fixed;
-  left: 2vw;
-  bottom: 3vh;
-  width: 50vh;
-  padding: 2.5vh;
+  left: 50%;
+  bottom: 2vh;
+  width: 48vh;
+  padding: 2vh;
   border-radius: 3vh;
   background: rgba(16, 18, 44, 0.94);
   box-shadow: 0 2vh 5vh rgba(0, 0, 0, 0.5);
+  transform: translateX(-50%);
 }
 
 #menu h2 {
-  font-size: 3.6vh;
+  font-size: 3.2vh;
 }
 
 #menu p {
@@ -192,11 +193,11 @@ h1 span {
   justify-content: space-between;
   gap: 2vh;
   margin-top: 0.8vh;
-  padding: 1.3vh 2vh;
+  padding: 0.9vh 1.8vh;
   border: 0.4vh solid transparent;
   border-radius: 1.8vh;
   background: rgba(255, 255, 255, 0.1);
-  font-size: 2.7vh;
+  font-size: 2.4vh;
   font-weight: 700;
 }
 

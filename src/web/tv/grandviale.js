@@ -6,7 +6,7 @@
 
 import { euro } from "../shared/config.js";
 import * as sound from "../shared/sound.js";
-import { chipCenter, createBoard, spacePoint } from "./grandviale-board.js";
+import { chipCenter, createBoard, nearestSpaces, spacePoint } from "./grandviale-board.js";
 
 const START_CASH = 12000;
 const SALARY = 2000;
@@ -30,25 +30,37 @@ const SPACE_TEXT = {
 };
 
 // land: price of the lot. stages: cost of each building. rates: price of one night with that many buildings.
-// spaces: the spaces next to the lot (where it can be bought and where its entrances go). lot: rectangle on the board.
-const HOTELS = [
-  { name: "Locanda del Faro", accent: "#e76f51", land: 1000, stages: [1200, 1000, 800], entrance: 150,
-    rates: [100, 200, 350], spaces: [1, 2, 3], lot: { x: 590, y: 905, width: 300, height: 160 } },
-  { name: "Pensione Girasole", accent: "#e9c46a", land: 1200, stages: [1500, 1200, 1000], entrance: 150,
-    rates: [120, 250, 400], spaces: [11, 12, 13], lot: { x: 590, y: 135, width: 300, height: 180 } },
-  { name: "Villa Ortensia", accent: "#b388eb", land: 1800, stages: [2200, 1800, 1500], entrance: 200,
-    rates: [200, 400, 650], spaces: [6, 7, 8], lot: { x: 40, y: 450, width: 310, height: 320 } },
-  { name: "Albergo Tre Pini", accent: "#52b788", land: 2000, stages: [2500, 2000, 1800, 1500], entrance: 200,
-    rates: [200, 400, 600, 900], spaces: [25, 26, 27], lot: { x: 1030, y: 905, width: 300, height: 160 } },
-  { name: "Rifugio Stella Alpina", accent: "#8ecae6", land: 2500, stages: [3000, 2500, 2000], entrance: 250,
-    rates: [300, 600, 950], spaces: [20, 21, 22], lot: { x: 1570, y: 450, width: 310, height: 320 } },
-  { name: "Palazzo Belvedere", accent: "#f4a261", land: 3000, stages: [3500, 3000, 2500, 2500], entrance: 300,
-    rates: [350, 650, 1000, 1400], spaces: [15, 16, 17], lot: { x: 1030, y: 135, width: 300, height: 180 } },
-  { name: "Grand Hotel Aurora", accent: "#ff8fab", land: 3500, stages: [4000, 3500, 3000, 3000], entrance: 300,
-    rates: [400, 800, 1200, 1700], spaces: [2, 3, 11, 12], lot: { x: 500, y: 455, width: 300, height: 310 } },
-  { name: "Torre Zaffiro", accent: "#4895ef", land: 4000, stages: [5000, 4000, 4000, 3500], entrance: 350,
-    rates: [500, 950, 1500, 2200], spaces: [16, 17, 25, 26], lot: { x: 1120, y: 455, width: 300, height: 310 } },
+// center/size: the lot on the board. reach: how many of the nearest spaces the hotel is "next to" (where it can be
+// bought and where its entrances go). style and tall (height of its buildings) say how the board draws it.
+const HOTEL_LIST = [
+  { name: "Locanda del Faro", accent: "#e76f51", style: "lighthouse", tall: 110, land: 1000, stages: [1200, 1000, 800],
+    entrance: 150, rates: [100, 200, 350], center: [500, 952], size: [310, 124], reach: 3 },
+  { name: "Pensione Girasole", accent: "#e9c46a", style: "flat", tall: 105, land: 1200, stages: [1500, 1200, 1000],
+    entrance: 150, rates: [120, 250, 400], center: [1400, 952], size: [310, 124], reach: 3 },
+  { name: "Villa Ortensia", accent: "#b388eb", style: "dome", tall: 120, land: 1800, stages: [2200, 1800, 1500],
+    entrance: 200, rates: [200, 400, 650], center: [915, 245], size: [230, 150], reach: 3 },
+  { name: "Albergo Tre Pini", accent: "#52b788", style: "pitched", tall: 125, land: 2000, stages: [2500, 2000, 1800, 1500],
+    entrance: 200, rates: [200, 400, 600, 900], center: [1715, 165], size: [280, 140], reach: 3 },
+  { name: "Rifugio Stella Alpina", accent: "#a47148", style: "chalet", tall: 115, land: 2500, stages: [3000, 2500, 2000],
+    entrance: 250, rates: [300, 600, 950], center: [200, 180], size: [260, 140], reach: 3 },
+  { name: "Palazzo Belvedere", accent: "#f4a261", style: "palace", tall: 135, land: 3000, stages: [3500, 3000, 2500, 2500],
+    entrance: 300, rates: [350, 650, 1000, 1400], center: [935, 655], size: [270, 140], reach: 3 },
+  { name: "Grand Hotel Aurora", accent: "#ff8fab", style: "dome", tall: 175, land: 3500, stages: [4000, 3500, 3000, 3000],
+    entrance: 300, rates: [400, 800, 1200, 1700], center: [520, 560], size: [300, 230], reach: 4 },
+  { name: "Torre Zaffiro", accent: "#4895ef", style: "tower", tall: 270, land: 4000, stages: [5000, 4000, 4000, 3500],
+    entrance: 350, rates: [500, 950, 1500, 2200], center: [1330, 560], size: [320, 240], reach: 4 },
 ];
+
+const HOTELS = HOTEL_LIST.map((hotel) => ({
+  ...hotel,
+  lot: {
+    x: hotel.center[0] - hotel.size[0] / 2,
+    y: hotel.center[1] - hotel.size[1] / 2,
+    width: hotel.size[0],
+    height: hotel.size[1],
+  },
+  spaces: nearestSpaces({ x: hotel.center[0], y: hotel.center[1] }, hotel.reach),
+}));
 
 function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -277,7 +289,7 @@ export function startGrandViale({ canvas, seats, send, onPrompt, onFinish }) {
     const lot = HOTELS[index].lot;
     for (let i = 0; i < 26; i++) {
       state.effects.push({
-        kind: "dust", x: lot.x + Math.random() * lot.width, y: lot.y + lot.height - 50,
+        kind: "dust", x: lot.x + Math.random() * lot.width, y: lot.y + lot.height * 0.5,
         dx: (Math.random() - 0.5) * 120, dy: -40 - Math.random() * 120, start: performance.now(), duration: 900,
       });
     }
@@ -467,6 +479,14 @@ export function startGrandViale({ canvas, seats, send, onPrompt, onFinish }) {
     }
   }
 
+  // "?demo" in the address starts with every hotel owned and fully built: to look at the board while drawing it.
+  if (new URLSearchParams(location.search).has("demo")) {
+    state.hotels.forEach((hotel, index) => {
+      hotel.owner = state.players[index % state.players.length];
+      hotel.stage = HOTELS[index].stages.length;
+      hotel.invested = HOTELS[index].land;
+    });
+  }
   banner("Benvenuti a Grand Viale!", "#14142b");
   run();
   return { onAct, viewFor, end: finish };

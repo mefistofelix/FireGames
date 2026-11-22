@@ -67,9 +67,15 @@ asks to press again, then ends the game (`window.onTvBack`, called by `MainActiv
 
 ## Graphics
 
-Hand-written Canvas 2D, no library. The Grand Viale board is a ground plane seen at an angle (one canvas
-transform, `GROUND_SQUASH`) plus upright things drawn at projected points and sorted back to front; buildings
-are boxes (front, roof, side strip). A camera (`board.focus(point, zoom)` / `board.overview()`) follows the
+Hand-written Canvas 2D, no library. The Grand Viale board is a holiday resort: a winding avenue (closed
+Catmull-Rom curve through `AVENUE`, 28 spaces spread evenly along it) between mountains and a beach with the sea,
+hotels in its bends. It is a ground plane seen at an angle (one canvas transform, `GROUND_SQUASH`) plus upright
+things drawn at projected points and sorted back to front. What never changes on the ground (meadow, road,
+spaces) is painted once on an offscreen layer. Each hotel has a `style` (`lighthouse`, `chalet`, `pitched`,
+`dome`, `palace`, `tower`, `flat`) and a building height; a hotel is "next to" the `reach` spaces nearest to its
+lot (`nearestSpaces`), so moving a lot or the avenue changes where it is bought and where its entrances go: check
+that every hotel still has an Acquisti space. `tv/index.html?demo` starts a game with every hotel fully built,
+to look at the board while drawing it. A camera (`board.focus(point, zoom)` / `board.overview()`) follows the
 events: it tracks the moving car, closes in on a lot when it is bought or built, and on a paid stay the car
 drives into the hotel and night falls while the guest rolls for the nights. Keep new events cinematic the same way.
 
