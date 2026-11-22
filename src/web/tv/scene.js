@@ -109,7 +109,7 @@ function drawRoad(context) {
   for (let x = 20; x < WIDTH; x += 120) context.fillRect(x, 938, 64, 8);
 }
 
-function roundedRect(context, x, y, width, height, radius) {
+export function roundedRect(context, x, y, width, height, radius) {
   context.beginPath();
   context.moveTo(x + radius, y);
   context.arcTo(x + width, y, x + width, y + height, radius);
@@ -120,7 +120,7 @@ function roundedRect(context, x, y, width, height, radius) {
 }
 
 // Car facing right (direction 1) or left (-1), wheels touching y.
-function drawCar(context, x, y, scale, color, lean, direction) {
+export function drawCar(context, x, y, scale, color, lean, direction) {
   context.save();
   context.translate(x, y);
   context.rotate(lean);
@@ -173,6 +173,7 @@ export function startScene(canvas, players) {
   const cars = new Map();
   let nextTrafficAt = 0;
   let previous = performance.now();
+  let running = true;
 
   function resize() {
     canvas.width = Math.min(window.innerWidth * (window.devicePixelRatio || 1), WIDTH);
@@ -226,6 +227,7 @@ export function startScene(canvas, players) {
   }
 
   function frame(now) {
+    if (!running) return;
     const seconds = Math.min(0.1, (now - previous) / 1000);
     previous = now;
     const time = now / 1000;
@@ -278,4 +280,12 @@ export function startScene(canvas, players) {
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
+
+  return {
+    // The lobby backdrop stops drawing while a game covers it.
+    setRunning(value) {
+      if (value && !running) requestAnimationFrame(frame);
+      running = value;
+    },
+  };
 }

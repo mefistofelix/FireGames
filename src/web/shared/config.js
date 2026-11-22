@@ -19,6 +19,11 @@ export const GAMES = [
 
 export const NAME_MAX_LENGTH = 12;
 
+// 12000 -> "12.000 €" (toLocaleString leaves four-digit numbers ungrouped in Italian).
+export function euro(amount) {
+  return String(Math.round(amount)).replace(/\B(?=(\d{3})+$)/g, ".") + " €";
+}
+
 // A phone that sends nothing for this long has left; the phone uses the same time to notice a silent TV.
 export const SILENCE_MS = 6000;
 export const PING_MS = 2000;

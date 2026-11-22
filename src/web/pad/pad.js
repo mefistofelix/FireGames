@@ -20,26 +20,36 @@ const elements = {
   previous: document.getElementById("previous"),
   next: document.getElementById("next"),
   start: document.getElementById("start"),
+  gameScreen: document.getElementById("play"),
+  who: document.getElementById("who"),
+  team: document.getElementById("team"),
+  money: document.getElementById("money"),
+  status: document.getElementById("status"),
+  buttons: document.getElementById("buttons"),
+  cards: document.getElementById("cards"),
   offline: document.getElementById("offline"),
   fullscreen: document.getElementById("fullscreen"),
 };
 
-// The id survives reloads, so a phone that reconnects takes its seat back.
-let peerId = localStorage.getItem("peerId");
+// The id survives reloads, so a phone that reconnects takes its seat back. "?player=2" keeps a separate
+// identity: several teams in the tabs of one browser, for development.
+const storagePrefix = new URLSearchParams(location.search).get("player") || "";
+let peerId = localStorage.getItem(storagePrefix + "peerId");
 if (!peerId) {
   peerId = Math.random().toString(36).slice(2, 10);
-  localStorage.setItem("peerId", peerId);
+  localStorage.setItem(storagePrefix + "peerId", peerId);
 }
 
-let chosenColor = localStorage.getItem("color");
+let chosenColor = localStorage.getItem(storagePrefix + "color");
 let takenColors = [];
 let joined = false;
 let heardAt = performance.now();
 let tilt = 0;
 let sentTilt = 0;
 let dragStartX = null;
+let wasMyTurn = false;
 
-elements.name.value = localStorage.getItem("name") || "";
+elements.name.value = localStorage.getItem(storagePrefix + "name") || "";
 
 const link = openGuest(peerId, onMessage, onOpen);
 setInterval(heartbeat, PING_MS);
@@ -55,7 +65,11 @@ function onOpen() {
 function onMessage(message) {
   heardAt = performance.now();
   elements.offline.hidden = true;
+  if (message.t === "view") return renderView(message);
   if (message.t !== "lobby") return;
+  elements.gameScreen.hidden = true;
+  elements.join.hidden = false;
+  elements.lobby.hidden = true;
   takenColors = message.taken;
   if (!message.you) {
     // Not seated: first contact, or the colour was taken meanwhile, or the TV restarted.
@@ -70,6 +84,44 @@ function onMessage(message) {
   elements.car.style.setProperty("--color", color.hex);
   elements.leader.hidden = !message.you.leader;
   elements.game.textContent = GAMES[message.game].name;
+}
+
+// During a game the TV decides everything this phone shows: team, money, a sentence, buttons and cards.
+function renderView(view) {
+  joined = true;
+  elements.join.hidden = true;
+  elements.lobby.hidden = true;
+  elements.gameScreen.hidden = false;
+  elements.gameScreen.classList.toggle("turn", view.turn === true);
+  elements.who.style.setProperty("--team", view.hex || "#fff");
+  elements.team.textContent = view.name;
+  elements.money.textContent = view.money || "";
+  elements.status.textContent = view.status;
+  elements.buttons.textContent = "";
+  for (const button of view.buttons) {
+    const element = document.createElement("button");
+    element.className = "action " + (button.kind || "plain");
+    element.disabled = button.disabled === true;
+    const label = document.createElement("span");
+    label.textContent = button.label;
+    const price = document.createElement("span");
+    price.textContent = button.sub || "";
+    element.append(label, price);
+    element.onclick = () => link.send({ t: "act", id: button.id });
+    elements.buttons.append(element);
+  }
+  elements.cards.textContent = "";
+  for (const card of view.cards) {
+    const element = document.createElement("div");
+    element.className = "card";
+    element.style.setProperty("--accent", card.hex);
+    const title = document.createElement("b");
+    title.textContent = card.title;
+    element.append(title, card.text);
+    elements.cards.append(element);
+  }
+  if (view.turn && !wasMyTurn && navigator.vibrate) navigator.vibrate([80, 60, 80]);
+  wasMyTurn = view.turn === true;
 }
 
 function heartbeat() {
@@ -120,8 +172,8 @@ function setTilt(value) {
 elements.name.oninput = renderColors;
 
 elements.enter.onclick = () => {
-  localStorage.setItem("name", elements.name.value);
-  localStorage.setItem("color", chosenColor);
+  localStorage.setItem(storagePrefix + "name", elements.name.value);
+  localStorage.setItem(storagePrefix + "color", chosenColor);
   joined = true;
   claimPhone();
   sendHello();

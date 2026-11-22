@@ -1,22 +1,32 @@
-// TV lobby: shows the QR code, seats the players that join from their phones and lets the first one
-// (or the TV remote) choose the game. The TV owns all the state; phones only send requests.
+// TV page: the lobby (QR code, seats, game choice) and the host of the running game.
+// The TV owns all the state; phones only send requests. Teams can also play without a phone: the TV remote
+// adds them in the lobby and answers the questions of whoever's turn it is, so the remote is passed around.
 
 import { COLORS, GAMES, NAME_MAX_LENGTH, SILENCE_MS, padUrl, serverInfo } from "../shared/config.js";
 import { openHost } from "../shared/link.js";
 import { drawQr } from "../shared/qr.js";
 import * as sound from "../shared/sound.js";
+import { startGrandViale } from "./grandviale.js";
 import { startScene } from "./scene.js";
 
-const players = new Map(); // peerId -> {name, color, hex, tilt, honkAt, seenAt}; the first one is the leader
+const BACK_CONFIRM_MS = 3000;
+
+// peerId -> {name, color, hex, tilt, honkAt, seenAt, remote}; the first one is the leader.
+// Remote teams have no phone: remote is true and their peerId is "remote-N".
+const players = new Map();
 let selectedGame = 0;
 let toastTimer = 0;
+let game = null;
+let menu = null; // {prompt, index, shown}: the running game's question, answerable with the remote
+let backAt = -Infinity;
 
 const link = openHost(onMessage);
-startScene(document.getElementById("scene"), players);
-renderGames();
+const scene = startScene(document.getElementById("scene"), players);
+renderLobby();
 showAddress();
 setInterval(dropSilentPlayers, 1000);
 window.addEventListener("keydown", onKey);
+window.onTvBack = onBack; // called by the Android shell for the remote's Back key
 
 async function showAddress() {
   const info = await serverInfo();
@@ -26,7 +36,7 @@ async function showAddress() {
   if (info) document.getElementById("version").textContent = "v" + info.version;
 }
 
-function renderGames() {
+function renderLobby() {
   const container = document.getElementById("games");
   container.textContent = "";
   GAMES.forEach((game, index) => {
@@ -42,9 +52,9 @@ function renderGames() {
     card.append(icon, name, tagline);
     container.append(card);
   });
-  const hint = document.getElementById("hint");
   const leader = players.values().next().value;
-  hint.textContent = leader
+  const hint = document.getElementById("hint");
+  hint.textContent = leader && !leader.remote
     ? leader.name + " sceglie il gioco dal telefono"
     : "Inquadra il codice con il telefono per entrare";
 }
@@ -60,20 +70,154 @@ function toast(text) {
 function pickGame(step) {
   selectedGame = (selectedGame + step + GAMES.length) % GAMES.length;
   sound.tick();
-  renderGames();
+  renderLobby();
+  sendLobbyToAll();
+}
+
+function freeColor() {
+  const taken = [...players.values()].map((player) => player.color);
+  return COLORS.find((color) => !taken.includes(color.id));
+}
+
+function addRemoteTeam() {
+  const color = freeColor();
+  if (!color) return;
+  let number = 1;
+  while (players.has("remote-" + number)) number++;
+  players.set("remote-" + number, {
+    name: "Squadra " + number, color: color.id, hex: color.hex, tilt: 0, honkAt: -Infinity, seenAt: 0, remote: true,
+  });
+  sound.chime();
+  renderLobby();
+  sendLobbyToAll();
+}
+
+function removeRemoteTeam() {
+  const remoteIds = [...players.keys()].filter((peerId) => players.get(peerId).remote);
+  if (!remoteIds.length) return;
+  players.delete(remoteIds[remoteIds.length - 1]);
+  sound.goodbye();
+  renderLobby();
   sendLobbyToAll();
 }
 
 function startGame() {
-  // The games are not implemented yet: the lobby is the first milestone.
-  toast(GAMES[selectedGame].name + " è in arrivo!");
+  if (game) return;
+  if (selectedGame !== 0) {
+    toast(GAMES[selectedGame].name + " è in arrivo!");
+    return;
+  }
+  if (players.size < 2) {
+    toast("Servono almeno 2 squadre");
+    return;
+  }
+  const seats = [...players].map(([peerId, player]) => ({ peerId, name: player.name, hex: player.hex, remote: player.remote }));
+  document.body.classList.add("playing");
+  scene.setRunning(false);
+  game = startGrandViale({
+    canvas: document.getElementById("board"),
+    seats,
+    send: (peerId, body) => link.send(peerId, body),
+    onPrompt,
+    onFinish: endGame,
+  });
+}
+
+function endGame() {
+  game = null;
+  menu = null;
+  renderMenu();
+  document.body.classList.remove("playing");
+  scene.setRunning(true);
+  for (const player of players.values()) player.seenAt = performance.now();
+  renderLobby();
+  sendLobbyToAll();
+}
+
+function firstEnabled(buttons) {
+  return Math.max(0, buttons.findIndex((button) => !button.disabled));
+}
+
+// The menu appears by itself for teams without a phone; for the others at the first press on the remote.
+function onPrompt(prompt) {
+  if (!prompt) {
+    menu = null;
+  } else if (!menu || menu.prompt !== prompt) {
+    menu = { prompt, index: firstEnabled(prompt.buttons), shown: prompt.player.remote === true };
+  }
+  renderMenu();
+}
+
+function renderMenu() {
+  const element = document.getElementById("menu");
+  element.hidden = !menu || !menu.shown;
+  if (element.hidden) return;
+  element.textContent = "";
+  const title = document.createElement("h2");
+  title.textContent = menu.prompt.player.name;
+  title.style.color = menu.prompt.player.hex;
+  const status = document.createElement("p");
+  status.textContent = menu.prompt.status;
+  element.append(title, status);
+  menu.prompt.buttons.forEach((button, index) => {
+    const row = document.createElement("div");
+    row.className = "choice" + (index === menu.index ? " selected" : "") + (button.disabled ? " disabled" : "");
+    const label = document.createElement("span");
+    label.textContent = button.label;
+    const price = document.createElement("strong");
+    price.textContent = button.sub || "";
+    row.append(label, price);
+    element.append(row);
+  });
+}
+
+function moveMenu(step) {
+  const buttons = menu.prompt.buttons;
+  let index = menu.index;
+  for (let tries = 0; tries < buttons.length; tries++) {
+    index = (index + step + buttons.length) % buttons.length;
+    if (!buttons[index].disabled) break;
+  }
+  menu.index = index;
+  sound.tick();
+}
+
+function onGameKey(event) {
+  if (!menu) return;
+  if (!menu.shown) {
+    menu.shown = true;
+  } else if (event.key === "ArrowUp") {
+    moveMenu(-1);
+  } else if (event.key === "ArrowDown") {
+    moveMenu(1);
+  } else if (event.key === "Enter") {
+    game.onAct(menu.prompt.peerId, menu.prompt.buttons[menu.index].id);
+    return;
+  }
+  renderMenu();
 }
 
 function onKey(event) {
   sound.unlock();
+  if (event.key === "Escape") onBack();
+  if (game) return onGameKey(event);
   if (event.key === "ArrowLeft") pickGame(-1);
   if (event.key === "ArrowRight") pickGame(1);
+  if (event.key === "ArrowUp") addRemoteTeam();
+  if (event.key === "ArrowDown") removeRemoteTeam();
   if (event.key === "Enter") startGame();
+}
+
+// Returns true when Back was used here; false lets the Android shell close the app.
+function onBack() {
+  if (!game) return false;
+  if (performance.now() - backAt < BACK_CONFIRM_MS) {
+    game.end();
+  } else {
+    backAt = performance.now();
+    toast("Premi ancora Indietro per terminare la partita");
+  }
+  return true;
 }
 
 function lobbyFor(peerId) {
@@ -110,7 +254,7 @@ function join(peerId, message) {
     sound.chime();
     toast(name + " è entrato!");
   }
-  renderGames();
+  renderLobby();
   sendLobbyToAll();
 }
 
@@ -120,21 +264,29 @@ function leave(peerId) {
   players.delete(peerId);
   sound.goodbye();
   toast(player.name + " è uscito");
-  renderGames();
+  renderLobby();
   sendLobbyToAll();
 }
 
+// Only in the lobby: during a game the seats are kept, so a phone that sleeps comes back to its place.
 function dropSilentPlayers() {
+  if (game) return;
   const now = performance.now();
   for (const [peerId, player] of players) {
-    if (now - player.seenAt > SILENCE_MS) leave(peerId);
+    if (!player.remote && now - player.seenAt > SILENCE_MS) leave(peerId);
   }
+}
+
+function onGameMessage(peerId, message) {
+  if (message.t === "act") game.onAct(peerId, message.id);
+  if (message.t === "peek" || message.t === "hello") link.send(peerId, game.viewFor(peerId));
 }
 
 function onMessage(peerId, message) {
   const player = players.get(peerId);
   if (player) player.seenAt = performance.now();
   if (message.t === "ping") return link.send(peerId, { t: "pong" });
+  if (game) return onGameMessage(peerId, message);
   if (message.t === "peek") return link.send(peerId, lobbyFor(peerId));
   if (message.t === "hello") return join(peerId, message);
   if (message.t === "bye") return leave(peerId);

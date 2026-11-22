@@ -17,7 +17,8 @@ Giochi da tavolo per **Fire TV** da fare in compagnia davanti alla TV: la TV è 
 | Collegamento telefoni via QR, nome e colore squadra | fatto |
 | Sala d'attesa animata (ogni squadra è una macchina: clacson, si muove trascinandola) | fatto |
 | Scelta del gioco (dal telefono della prima squadra o dal telecomando) | fatto |
-| **Grand Viale** — terreni, hotel e pedaggi | da fare |
+| Gioco anche senza telefoni, passandosi il telecomando | fatto |
+| **Grand Viale** — terreni, hotel e pernottamenti | giocabile |
 | **Dominio** — carri armati, dadi e conquista | da fare |
 | **Occhio di Falco** — trova il personaggio nascosto | da fare |
 
@@ -29,6 +30,19 @@ I tre giochi sono originali: nomi, tabelloni, personaggi e grafica propri.
 2. Con il telefono (sulla stessa Wi-Fi) inquadra il QR code, oppure scrivi nel browser l'indirizzo sotto al codice.
 3. Scrivi il nome della squadra, scegli il colore, tocca **Entra**.
 4. La prima squadra entrata sceglie il gioco e lo avvia. Dal telecomando: ◀ ▶ per scegliere, OK per avviare.
+
+**Senza telefono**: nella sala d'attesa ▲ aggiunge una squadra che gioca col telecomando (▼ la toglie). Durante la
+partita le scelte della squadra di turno compaiono anche sulla TV: ▲ ▼ per scegliere, OK per confermare, e ci si
+passa il telecomando. **Indietro** due volte termina la partita.
+
+### Grand Viale
+
+Si lancia il dado e si gira sul viale. Sulle caselle **Acquisti** 💰 si compra il terreno accanto, sulle caselle
+**Cantiere** 🏗️ si chiede il permesso di costruire (il dado dei permessi può dire sì, no, gratis o prezzo doppio),
+al **Municipio** 🏛️ il permesso è garantito. Con almeno un edificio si aprono gli **ingressi** sulle caselle
+accanto all'hotel: chi si ferma su un ingresso altrui entra in hotel, lancia il dado per le notti e paga.
+Passando dalla **Banca** 🏦 si incassano 2.000 €. Chi non può pagare vende gli hotel alla banca a metà prezzo;
+se non basta è in bancarotta. Vince l'ultima squadra rimasta, o la più ricca se la partita viene terminata prima.
 
 Note sui telefoni:
 

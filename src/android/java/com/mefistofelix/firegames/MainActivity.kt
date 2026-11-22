@@ -46,6 +46,14 @@ class MainActivity : Activity() {
         }
     }
 
+    /** Back first goes to the page (a running game asks to confirm); the lobby lets it close the app. */
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        web.evaluateJavascript("window.onTvBack ? window.onTvBack() : false") { handled ->
+            if (handled != "true") finish()
+        }
+    }
+
     override fun onDestroy() {
         server.stop()
         web.destroy()

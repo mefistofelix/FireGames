@@ -28,9 +28,13 @@ Keep both files aligned with every accepted change, in the same commit.
 - `src/web/shared/config.js` — team colours, game list, timings, `serverInfo()` / `padUrl()`.
 - `src/web/shared/qr.js` — QR encoder (byte mode, level M, versions 1-6, up to 106 bytes).
 - `src/web/shared/sound.js` — sound effects synthesized with Web Audio (no audio files).
-- `src/web/tv/` — TV page: `tv.js` lobby logic (seats, leader, game choice), `scene.js` animated backdrop
+- `src/web/tv/` — TV page: `tv.js` lobby logic (seats, leader, game choice, teams added with the remote) and host
+  of the running game (routes phone messages, shows the remote menu), `scene.js` animated lobby backdrop
   (sky, clouds, birds, pond, traffic; every player is a car on the road), `tv.css` sized in `vh`.
-- `src/web/pad/` — phone page: join form (team name, colour), lobby pad (horn, drag the car, game choice for the leader).
+- `src/web/tv/grandviale.js` — Grand Viale rules and turn flow, written as straight async code: `ask(player,
+  status, buttons)` resolves with the pressed button, animations are awaited. `grandviale-board.js` draws it.
+- `src/web/pad/` — phone page: join form (team name, colour), lobby pad (horn, drag the car, game choice for the
+  leader), game screen that renders the "view" sent by the TV. `?player=2` gives a tab its own identity (dev).
 - `src/android/java/.../LanServer.kt` — static files from assets (`Cache-Control: no-cache`), `/info`
   (`{ip, port, version}`), `/ws?id=`; sends `{t:"bye"}` to the TV when a phone's socket closes.
 - `MainActivity.kt` — WebView, keep-screen-on, update dialog. `Updater.kt` / `Relauncher.kt` — self-update.
@@ -43,8 +47,31 @@ Phone → TV: `{t:"peek"}` (ask the lobby state before joining), `{t:"hello", na
 2 s, `{t:"tilt", x}` (-1..1, how far the car is dragged, sent on change at most 15 Hz), `{t:"honk"}`, and from the leader (first seated
 player) `{t:"pick", step}` and `{t:"start"}`.
 TV → phone: `{t:"lobby", taken, you, game}` (`you` is null until seated), `{t:"pong"}`.
-A phone silent for 6 s is dropped; a phone that hears nothing for 6 s shows "Cerco la TV…".
-When a game adds messages, document them here.
+In the lobby a phone silent for 6 s is dropped; a phone that hears nothing for 6 s shows "Cerco la TV…".
+
+## Game protocol (all games)
+
+The phone is a dumb terminal: the TV sends each team a view and the phone sends back the pressed button.
+TV → phone: `{t:"view", name, hex, money, turn, status, buttons:[{id, label, sub, kind, disabled}], cards:[{title,
+text, hex}]}` (`kind`: `primary`, `plain`, `danger`, `quiet`; `turn` true makes the phone vibrate once).
+Phone → TV: `{t:"act", id}`. `peek` / `hello` during a game are answered with the current view, so a phone
+that reloads or wakes up is back in its seat; seats are never dropped while a game runs.
+A game module exports `start...({canvas, seats, send, onPrompt, onFinish})` and returns `{onAct, viewFor, end}`.
+
+## Remote-only play
+
+Every question can also be answered on the TV: `onPrompt` gives `tv.js` the waiting question and it shows a menu
+(▲ ▼ OK). The menu opens by itself for teams without a phone (added in the lobby with ▲, removed with ▼, ids
+`remote-N`) and at the first key press for the others, so one remote can be passed around. Back during a game
+asks to press again, then ends the game (`window.onTvBack`, called by `MainActivity.onBackPressed`).
+
+## Graphics
+
+Hand-written Canvas 2D, no library. The Grand Viale board is a ground plane seen at an angle (one canvas
+transform, `GROUND_SQUASH`) plus upright things drawn at projected points and sorted back to front; buildings
+are boxes (front, roof, side strip). A camera (`board.focus(point, zoom)` / `board.overview()`) follows the
+events: it tracks the moving car, closes in on a lot when it is bought or built, and on a paid stay the car
+drives into the hotel and night falls while the guest rolls for the nights. Keep new events cinematic the same way.
 
 ## Browser limits that shape the design
 
@@ -101,11 +128,25 @@ characters or look. Working titles (in `config.js`):
 2. **Dominio** — territory conquest with armies and dice battles.
 3. **Occhio di Falco** — find the hidden character in a crowded animated scene before the others.
 
-Status: only the shared platform exists (connection, lobby, seats, game choice). "Avvia" shows "in arrivo".
+Status: the platform and **Grand Viale** are playable; the other two show "in arrivo".
+
+### Grand Viale rules (as implemented in `grandviale.js`)
+
+- 28 spaces in a ring, 8 hotels on lots next to it, 2+ teams, 12.000 € each. Turn: roll one die, move.
+- Passing the Banca (space 0) pays 2.000 €. Bonus spaces pay 500 €.
+- Acquisti space: buy a free lot next to that space. Cantiere space: ask the permit for the next building of any
+  own hotel — permit die: 3 faces yes, 1 no, 1 free, 1 double price (may be declined). Municipio: permit granted.
+- Entrances: one per turn may be bought for an own hotel with buildings (free on the Ingresso spaces); it takes
+  the first free space next to the lot, one entrance per space.
+- Stopping on a space with another team's entrance: roll the die for the nights, pay nights × the hotel's rate.
+- A team that cannot pay sells its hotels to the bank at half cost, cheapest first; still short = bankrupt.
+  Last team standing wins; the first team (or Back twice on the remote) can end early: richest wins.
+- Not done yet: choosing where an entrance goes, auctions, trading, skipping an absent team's turn.
 
 ## Open decisions (ask the owner)
 
 - **Guest without the Wi-Fi password**: optional Wi-Fi QR code (password typed once on the TV). An internet relay
   for players outside the LAN was discussed and not chosen.
-- Rendering for the games: hand-written Canvas 2D (current) or a library such as Three.js / PixiJS for 3D dice
-  and richer effects (needs approval as a dependency, and a performance check on the TV).
+- Rendering: the owner asked for 3D graphics with zoom on the events. Today it is the Canvas 2D camera described
+  in "Graphics". Real 3D (WebGL through a library such as Three.js) needs the owner's approval as a dependency
+  and a performance check on the TV.
