@@ -31,7 +31,9 @@ I tre giochi sono originali: nomi, tabelloni, personaggi e grafica propri.
 3. Scrivi il nome della squadra, scegli il colore, tocca **Entra**.
 4. La prima squadra entrata sceglie il gioco e lo avvia. Dal telecomando: ◀ ▶ per scegliere, OK per avviare.
 
-**Senza telefono**: nella sala d'attesa ▲ aggiunge una squadra che gioca col telecomando (▼ la toglie). Durante la
+**Senza telefono**: basta premere OK per avviare: la TV chiede quante squadre giocano (da 2 a 4) e si gioca
+passandosi il telecomando. In alternativa, nella sala d'attesa ▲ aggiunge una squadra senza telefono (▼ la toglie),
+anche insieme a squadre col telefono. Durante la
 partita le scelte della squadra di turno compaiono anche sulla TV: ▲ ▼ per scegliere, OK per confermare, e ci si
 passa il telecomando. **Indietro** due volte termina la partita.
 

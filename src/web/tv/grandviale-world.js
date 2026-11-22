@@ -128,7 +128,19 @@ function easeOut(t) {
 }
 
 // The printed top of the board: meadow, beach, sea bed, the avenue and its spaces.
-function paintBoard(spaces) {
+// Where the straight line from a space to the centre of a lot reaches the lot.
+function lotEdge(from, lot) {
+  const center = { x: lot.x + lot.width / 2, y: lot.y + lot.height / 2 };
+  for (let t = 0; t <= 1; t += 0.01) {
+    const x = from.x + (center.x - from.x) * t;
+    const y = from.y + (center.y - from.y) * t;
+    const inside = x >= lot.x && x <= lot.x + lot.width && y >= lot.y && y <= lot.y + lot.height;
+    if (inside) return { x, y };
+  }
+  return center;
+}
+
+function paintBoard(spaces, hotels) {
   const scale = BOARD_TEXTURE_SCALE;
   return canvasTexture(BOARD.width * scale, BOARD.height * scale, (context) => {
     context.setTransform(scale, 0, 0, scale, -BOARD.x * scale, -BOARD.y * scale);
@@ -178,6 +190,27 @@ function paintBoard(spaces) {
     context.setLineDash([18, 22]);
     context.stroke();
     context.setLineDash([]);
+
+    // the entrance places: a marked drive from each space next to a hotel to the edge of its lot.
+    // An entrance, when it is built, goes on one of these.
+    for (const hotel of hotels) {
+      for (const space of hotel.spaces) {
+        const from = ringPoint(space);
+        const to = lotEdge(from, hotel.lot);
+        context.lineCap = "butt";
+        context.beginPath();
+        context.moveTo(from.x, from.y);
+        context.lineTo(to.x, to.y);
+        context.strokeStyle = "#b08d4f";
+        context.lineWidth = 38;
+        context.setLineDash([12, 9]);
+        context.stroke();
+        context.setLineDash([]);
+        context.strokeStyle = "#f6ecd2";
+        context.lineWidth = 28;
+        context.stroke();
+      }
+    }
 
     context.textAlign = "center";
     context.textBaseline = "middle";
@@ -348,7 +381,7 @@ export function createWorld(canvas, state, hotels, spaces) {
 
   const boardCenter = { x: BOARD.x + BOARD.width / 2, y: BOARD.y + BOARD.height / 2 };
   scene.add(solid(new THREE.BoxGeometry(BOARD.width, 34, BOARD.height), lambert("#2b2f45"), boardCenter.x, -17.5, boardCenter.y));
-  const top = new THREE.Mesh(new THREE.PlaneGeometry(BOARD.width, BOARD.height), lambert("#ffffff", { map: paintBoard(spaces) }));
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(BOARD.width, BOARD.height), lambert("#ffffff", { map: paintBoard(spaces, hotels) }));
   top.rotation.x = -Math.PI / 2;
   top.position.set(boardCenter.x, 0, boardCenter.y);
   top.receiveShadow = true;
@@ -778,16 +811,17 @@ export function createWorld(canvas, state, hotels, spaces) {
       const from = ringPoint(space);
       const dx = lot.x + lot.width / 2 - from.x;
       const dy = lot.y + lot.height / 2 - from.y;
-      const length = Math.hypot(dx, dy);
       const entrance = new THREE.Group();
       entrance.position.set(from.x, 0, from.y);
       entrance.rotation.y = Math.atan2(-dy, dx);
-      const carpet = solid(new THREE.BoxGeometry(Math.min(length - 30, 110), 1, 22), lambert("#c1121f"), Math.min(length - 30, 110) / 2 + 40, 0.8, 0);
+      const edge = lotEdge(from, lot);
+      const reach = Math.hypot(edge.x - from.x, edge.y - from.y);
+      const carpet = solid(new THREE.BoxGeometry(reach - 44, 1, 22), lambert("#c1121f"), (reach + 44) / 2, 0.8, 0);
       const color = lambert(state.hotels[index].owner.hex);
       entrance.add(carpet);
-      entrance.add(solid(new THREE.BoxGeometry(4, 34, 4), color, 62, 17, -14));
-      entrance.add(solid(new THREE.BoxGeometry(4, 34, 4), color, 62, 17, 14));
-      entrance.add(solid(new THREE.BoxGeometry(22, 5, 40), color, 62, 36, 0));
+      entrance.add(solid(new THREE.BoxGeometry(4, 34, 4), color, reach - 10, 17, -14));
+      entrance.add(solid(new THREE.BoxGeometry(4, 34, 4), color, reach - 10, 17, 14));
+      entrance.add(solid(new THREE.BoxGeometry(22, 5, 40), color, reach - 10, 36, 0));
       entranceGroup.add(entrance);
     }
   }

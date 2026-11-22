@@ -10,6 +10,8 @@ import { startGrandViale } from "./grandviale.js";
 import { startScene } from "./scene.js";
 
 const BACK_CONFIRM_MS = 3000;
+const MIN_TEAMS = 2;
+const MAX_TEAMS = 4;
 
 // peerId -> {name, color, hex, tilt, honkAt, seenAt, remote}; the first one is the leader.
 // Remote teams have no phone: remote is true and their peerId is "remote-N".
@@ -19,6 +21,7 @@ let toastTimer = 0;
 let game = null;
 let menu = null; // {prompt, index, shown}: the running game's question, answerable with the remote
 let backAt = -Infinity;
+let chooser = null; // {count}: "how many teams?", asked when a game is started without enough teams
 
 const link = openHost(onMessage);
 const scene = startScene(document.getElementById("scene"), players);
@@ -108,7 +111,7 @@ function startGame() {
     return;
   }
   if (players.size < 2) {
-    toast("Servono almeno 2 squadre");
+    openChooser();
     return;
   }
   const seats = [...players].map(([peerId, player]) => ({ peerId, name: player.name, hex: player.hex, remote: player.remote }));
@@ -133,6 +136,50 @@ function endGame() {
   for (const player of players.values()) player.seenAt = performance.now();
   renderLobby();
   sendLobbyToAll();
+}
+
+// Starting with fewer than two teams is not an error: the TV asks how many teams play and adds the missing
+// ones as teams without a phone, who pass the remote around.
+function openChooser() {
+  chooser = { count: MIN_TEAMS };
+  renderChooser();
+}
+
+function closeChooser() {
+  chooser = null;
+  renderChooser();
+}
+
+function renderChooser() {
+  const element = document.getElementById("menu");
+  element.hidden = chooser === null;
+  if (!chooser) return;
+  element.textContent = "";
+  const title = document.createElement("h2");
+  title.textContent = "Quante squadre giocano?";
+  const status = document.createElement("p");
+  status.textContent = "Chi non ha il telefono gioca col telecomando: ve lo passate a ogni turno.";
+  element.append(title, status);
+  for (let count = MIN_TEAMS; count <= MAX_TEAMS; count++) {
+    const row = document.createElement("div");
+    row.className = count === chooser.count ? "choice selected" : "choice";
+    row.textContent = count + " squadre";
+    element.append(row);
+  }
+}
+
+function onChooserKey(event) {
+  if (event.key === "ArrowUp") chooser.count = Math.max(MIN_TEAMS, chooser.count - 1);
+  if (event.key === "ArrowDown") chooser.count = Math.min(MAX_TEAMS, chooser.count + 1);
+  if (event.key === "Enter") {
+    const count = chooser.count;
+    closeChooser();
+    while (players.size < count) addRemoteTeam();
+    startGame();
+    return;
+  }
+  sound.tick();
+  renderChooser();
 }
 
 function firstEnabled(buttons) {
@@ -202,6 +249,7 @@ function onKey(event) {
   sound.unlock();
   if (event.key === "Escape") onBack();
   if (game) return onGameKey(event);
+  if (chooser) return onChooserKey(event);
   if (event.key === "ArrowLeft") pickGame(-1);
   if (event.key === "ArrowRight") pickGame(1);
   if (event.key === "ArrowUp") addRemoteTeam();
@@ -211,6 +259,10 @@ function onKey(event) {
 
 // Returns true when Back was used here; false lets the Android shell close the app.
 function onBack() {
+  if (chooser) {
+    closeChooser();
+    return true;
+  }
   if (!game) return false;
   if (performance.now() - backAt < BACK_CONFIRM_MS) {
     game.end();

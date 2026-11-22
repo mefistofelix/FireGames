@@ -64,7 +64,9 @@ A game module exports `start...({canvas, seats, send, onPrompt, onFinish})` and 
 
 Every question can also be answered on the TV: `onPrompt` gives `tv.js` the waiting question and it shows a menu
 (▲ ▼ OK). The menu opens by itself for teams without a phone (added in the lobby with ▲, removed with ▼, ids
-`remote-N`) and at the first key press for the others, so one remote can be passed around. Back during a game
+`remote-N`) and at the first key press for the others, so one remote can be passed around. **Starting a game never
+blocks on missing teams**: with fewer than two, the TV asks "Quante squadre giocano?" (2-4) and adds the missing
+ones as teams without a phone. Nobody needs a phone to play. Back during a game
 asks to press again, then ends the game (`window.onTvBack`, called by `MainActivity.onBackPressed`).
 
 ## Graphics
@@ -199,7 +201,8 @@ hotel names, prices and art are our own and must stay so.
 - Regalo space: the next piece of one own hotel, free and without permit.
 - Entrances: reaching or passing the Municipio (space 14) gives the right, that turn, to buy one entrance for each
   own hotel with at least one building. The Ingresso spaces give one free entrance. An entrance takes the first
-  free space next to the lot; one entrance per space.
+  free space next to the lot; one entrance per space. The possible places are printed on the board: a marked
+  drive from each of those spaces to the edge of the lot.
 - Stopping on a space with another team's entrance: roll the numbered die for the nights, pay nights × the
   hotel's rate for its current pieces.
 - A team that cannot pay auctions whole hotels (cheapest first) to the other teams, from the land price in steps
