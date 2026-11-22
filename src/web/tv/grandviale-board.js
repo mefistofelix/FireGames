@@ -217,6 +217,8 @@ export function createBoard(canvas, state, hotels, spaces) {
   let night = 0;
   let unit = 1; // canvas pixels per screen unit
   let bottomGap = 0;
+  let frames = 0;
+  let countedSince = performance.now();
 
   function resize() {
     canvas.width = Math.min(window.innerWidth * (window.devicePixelRatio || 1), CANVAS_MAX_WIDTH);
@@ -777,6 +779,14 @@ export function createBoard(canvas, state, hotels, spaces) {
     drawDie(now);
     drawTexts(now);
     drawFinish(now);
+
+    // Frame rate in the console every five seconds: on the TV it ends up in logcat (adb logcat -s chromium).
+    frames++;
+    if (now - countedSince >= 5000) {
+      console.log("Grand Viale: " + Math.round(frames * 1000 / (now - countedSince)) + " fps");
+      frames = 0;
+      countedSince = now;
+    }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
