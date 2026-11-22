@@ -146,10 +146,14 @@ class LanServer(private val assets: AssetManager, private val versionName: Strin
             if (first < 0 || second < 0) return null
             val opcode = first and 0x0f
             val finished = (first and 0x80) != 0
-            var length = (second and 0x7f).toLong()
-            if (length == 126L) length = readNumber(input, 2) ?: return null
-            if (length == 127L) length = readNumber(input, 8) ?: return null
-            if (length > MAX_MESSAGE_BYTES) return null
+            // 0..125 is the length itself; 126 and 127 announce a 16 or 64 bit length in the next bytes
+            val announced = second and 0x7f
+            val length = when (announced) {
+                126 -> readNumber(input, 2) ?: return null
+                127 -> readNumber(input, 8) ?: return null
+                else -> announced.toLong()
+            }
+            if (length < 0 || length > MAX_MESSAGE_BYTES) return null
             val masked = (second and 0x80) != 0
             val mask = if (masked) readBytes(input, 4) ?: return null else null
             val payload = readBytes(input, length.toInt()) ?: return null
