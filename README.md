@@ -1,0 +1,70 @@
+# Fire Games
+
+Giochi da tavolo per **Fire TV** da fare in compagnia davanti alla TV: la TV è il tabellone, ogni squadra usa
+**un telefono** come controller.
+
+- Si entra **inquadrando il QR code** mostrato sulla TV: nessuna app da installare sul telefono, funziona nel
+  browser di Android e iPhone.
+- Ogni squadra scrive il proprio nome e sceglie un colore.
+- Dadi, animazioni, effetti e suoni sono sulla TV; turni e scelte (lancia i dadi, compra, attacca…) si fanno dal
+  telefono, che mostra anche soldi, punti e carte della squadra.
+- Si gioca **in rete locale**: TV e telefoni devono essere sulla stessa Wi-Fi. Non serve internet per giocare.
+
+## Stato
+
+| | |
+|---|---|
+| Collegamento telefoni via QR, nome e colore squadra | fatto |
+| Sala d'attesa animata (ogni squadra è una macchina: clacson, si muove inclinando/trascinando) | fatto |
+| Scelta del gioco (dal telefono della prima squadra o dal telecomando) | fatto |
+| **Grand Viale** — terreni, hotel e pedaggi | da fare |
+| **Dominio** — carri armati, dadi e conquista | da fare |
+| **Occhio di Falco** — trova il personaggio nascosto | da fare |
+
+I tre giochi sono originali: nomi, tabelloni, personaggi e grafica propri.
+
+## Come si gioca
+
+1. Apri **Fire Games** sulla Fire TV.
+2. Con il telefono (sulla stessa Wi-Fi) inquadra il QR code, oppure scrivi nel browser l'indirizzo sotto al codice.
+3. Scrivi il nome della squadra, scegli il colore, tocca **Entra**.
+4. La prima squadra entrata sceglie il gioco e lo avvia. Dal telecomando: ◀ ▶ per scegliere, OK per avviare.
+
+Note sui telefoni:
+
+- La pagina chiede lo **schermo intero** al tocco su *Entra*. Su iPhone Safari lo schermo intero non esiste: la
+  pagina è comunque fatta per stare in una schermata senza scorrere.
+- I **sensori di movimento** del telefono non sono disponibili (i browser li danno solo alle pagine HTTPS): ogni
+  effetto ha un equivalente a tocco.
+
+## Installazione e aggiornamenti
+
+L'APK viene costruito da GitHub Actions e pubblicato nel repository
+[mefistofelix/firetv-apps](https://github.com/mefistofelix/firetv-apps), lo stesso delle altre app Fire TV.
+L'app controlla `firegames.json` a ogni ritorno in primo piano (al massimo ogni 2 minuti): se c'è una versione più
+nuova la propone, la scarica, ne verifica lo SHA-256 e apre l'installazione di Fire TV; poi si riapre da sola.
+La prima volta Fire OS chiede di attivare *Installa app sconosciute* per Fire Games.
+
+Prima installazione, con ADB di rete attivo sulla TV:
+
+```powershell
+adb connect <ip-della-tv>:5555
+adb install -r build\apk\FireGames-N.apk
+```
+
+## Sviluppo
+
+- `src/web` — tutto quello che si vede (pagina TV e pagina telefono), JavaScript senza build e senza librerie.
+- `src/android` — guscio Kotlin: server HTTP/WebSocket in LAN, WebView a schermo intero, aggiornamento automatico.
+- Prova sul PC senza TV:
+
+  ```powershell
+  uv run --no-project python -m http.server 5173 --directory src/web
+  ```
+
+  poi apri `http://localhost:5173/tv/index.html` e, in altre schede dello stesso browser,
+  `http://localhost:5173/pad/`.
+- Rilascio: dopo `git push`, `bash release.sh` avvia la build su GitHub Actions, scarica l'APK in `build/apk` e lo
+  offre alle TV tramite `firetv-apps`. `bash release.sh build` si ferma all'APK.
+
+Dettagli tecnici, protocollo e decisioni aperte: [AGENTS.md](AGENTS.md).
