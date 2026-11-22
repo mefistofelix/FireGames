@@ -362,9 +362,7 @@ export function createBoard(canvas, state, hotels, spaces) {
         },
       });
     });
-    items.sort((a, b) => a.y - b.y);
-    for (const item of items) item.draw();
-
+    // the icons of the spaces lie on the ground: before anything that stands on it
     context.textAlign = "center";
     context.textBaseline = "middle";
     context.font = 34 * camera.zoom + "px system-ui, sans-serif";
@@ -373,6 +371,9 @@ export function createBoard(canvas, state, hotels, spaces) {
       context.fillText(TILES[spaces[index]].icon, point.x, point.y + 2);
     }
     context.textBaseline = "alphabetic";
+    items.sort((a, b) => a.y - b.y);
+    for (const item of items) item.draw();
+
     hotels.forEach((hotel, index) => drawLotLabel(index));
 
     for (const effect of state.effects) {
