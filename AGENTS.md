@@ -11,7 +11,8 @@ Keep both files aligned with every accepted change, in the same commit.
 - The Fire TV app (package `com.mefistofelix.firegames`, launcher name "Fire Games") is a thin Kotlin shell:
   `LanServer` (HTTP + WebSocket on port 8080, hand written, no libraries) and a full-screen WebView that loads
   `http://127.0.0.1:8080/tv/index.html` from it.
-- Everything visible is web (`src/web`, plain ES modules, **no build step, no npm, no third-party code**), packed
+- Everything visible is web (`src/web`, plain ES modules, **no build step, no npm**; the only third-party code is
+  Three.js, see "Graphics"), packed
   into the APK as assets. The TV page draws the game; the phones open `http://<tv-ip>:8080/` (QR code on the TV),
   which redirects to `/pad/`. One web codebase covers Android and iOS phones.
 - **The TV page owns all the game state.** Phones send requests, the TV validates them and sends each phone what
@@ -32,7 +33,8 @@ Keep both files aligned with every accepted change, in the same commit.
   of the running game (routes phone messages, shows the remote menu), `scene.js` animated lobby backdrop
   (sky, clouds, birds, pond, traffic; every player is a car on the road), `tv.css` sized in `vh`.
 - `src/web/tv/grandviale.js` — Grand Viale rules and turn flow, written as straight async code: `ask(player,
-  status, buttons)` resolves with the pressed button, animations are awaited. `grandviale-board.js` draws it.
+  status, buttons)` resolves with the pressed button, animations are awaited. The board is drawn by
+  `grandviale-board.js` and the modules under it (see "Graphics").
 - `src/web/pad/` — phone page: join form (team name, colour), lobby pad (horn, drag the car, game choice for the
   leader), game screen that renders the "view" sent by the TV. `?player=2` gives a tab its own identity (dev).
 - `src/android/java/.../LanServer.kt` — static files from assets (`Cache-Control: no-cache`), `/info`
@@ -67,17 +69,36 @@ asks to press again, then ends the game (`window.onTvBack`, called by `MainActiv
 
 ## Graphics
 
-Hand-written Canvas 2D, no library. The Grand Viale board is a holiday resort: a winding avenue (closed
-Catmull-Rom curve through `AVENUE`, 28 spaces spread evenly along it) between mountains and a beach with the sea,
-hotels in its bends. It is a ground plane seen at an angle (one canvas transform, `GROUND_SQUASH`) plus upright
-things drawn at projected points and sorted back to front. What never changes on the ground (meadow, road,
-spaces) is painted once on an offscreen layer. Each hotel has a `style` (`lighthouse`, `chalet`, `pitched`,
-`dome`, `palace`, `tower`, `flat`) and a building height; a hotel is "next to" the `reach` spaces nearest to its
-lot (`nearestSpaces`), so moving a lot or the avenue changes where it is bought and where its entrances go: check
-that every hotel still has an Acquisti space. `tv/index.html?demo` starts a game with every hotel fully built,
-to look at the board while drawing it. A camera (`board.focus(point, zoom)` / `board.overview()`) follows the
-events: it tracks the moving car, closes in on a lot when it is bought or built, and on a paid stay the car
-drives into the hotel and night falls while the guest rolls for the nights. Keep new events cinematic the same way.
+Art direction asked by the owner (2026-11-22): **a board game that came alive**. The simulation of a real board
+game (a board on a table, printed spaces, dice thrown onto the board that bounce among the buildings) mixed with
+a realistic setting: buildings, city, cars and people look "real", the guest gets out of the car and walks into
+the hotel, a hotel is built by a crane with scaffolding, fast, and each hotel and each area of the map has its own
+character. Not AAA: elaborate indie quality, cared for in every detail. The phones are remote controls for the
+actions.
+
+- 3D is drawn with **Three.js r160**, vendored as `src/web/vendor/three.module.min.js` (approved by the owner; the
+  only third-party code in the project; no build step: it is imported as an ES module). Everything is procedural:
+  geometry from Three.js primitives, textures painted on canvases. No model or image files.
+- `grandviale-world.js` is the scene: wooden table, board slab whose top is one painted canvas (meadow, beach,
+  avenue, spaces with their symbols, cream frame), sea, mountains, plants, lamps, clouds, boats; per hotel a lot
+  plate in the owner's colour, flag, label sprite, buildings by `style` (`lighthouse`, `chalet`, `pitched`,
+  `dome`, `palace`, `tower`, `flat`) and the leisure area; one crane + scaffold + dust lent to whichever piece is
+  growing; cars and people; entrances (red carpet and canopy); the two dice. It only reads the game state each
+  frame and offers `focus(point, zoom)` / `overview()`; the camera gets lower and turns when it closes in.
+- Dice: the game decides the result, the scene puts that face on top while the die is out of sight, then plays a
+  scripted flight (bounces, spin that ends exactly at rest). No physics engine.
+- Stay: the game's `glide` + `hidden` + `night` flags become: the car pulls over, the guest walks to the door and
+  goes in, the sun goes down, windows and street lamps light up.
+- `grandviale-hud.js` draws the flat panels (team chips, banner, dice tray, floating amounts, final ranking) on a
+  transparent 2D canvas over the scene. `grandviale-path.js` holds the avenue (closed Catmull-Rom curve, 28 spaces)
+  and the look of the spaces. `grandviale-board.js` joins world and panels in one animation loop.
+- A hotel is "next to" the `reach` spaces nearest to its lot (`nearestSpaces`), so moving a lot or the avenue
+  changes where it is bought and where its entrances go: check that every hotel still has an Acquisti space.
+- `tv/index.html?demo` starts a game with every hotel fully built, to look at the board while working on it.
+- Performance on the reference TV (Fire TV Stick 4K Max 2nd gen, PowerVR GE9215, OpenGL ES 3.2, 1.7 GB RAM):
+  about 30 fps with the scene rendered at 1280x720, a 1024 shadow map redrawn every other frame, Lambert
+  materials. The frame rate is logged every 5 s (`adb logcat -s FireGames`). Measure before adding detail.
+- The lobby (`scene.js`) is still Canvas 2D.
 
 ## Browser limits that shape the design
 
@@ -120,6 +141,7 @@ The phones load the pad over plain `http://` from a LAN address, which browsers 
 
 - Simple, readable code; descriptive names; guard clauses; no abstraction without a concrete need.
 - No third-party dependencies without the owner's explicit approval (this includes JS libraries and assets).
+  Approved so far: Three.js.
 - Commit and push at every meaningful step. Never mention an AI assistant in commits or repository metadata.
   No private information in the repository. LF line endings, no `.gitattributes`.
 - Workflows stay minimal and call repository scripts.
@@ -172,6 +194,3 @@ hotel names, prices and art are our own and must stay so.
 
 - **Guest without the Wi-Fi password**: optional Wi-Fi QR code (password typed once on the TV). An internet relay
   for players outside the LAN was discussed and not chosen.
-- Rendering: the owner asked for 3D graphics with zoom on the events. Today it is the Canvas 2D camera described
-  in "Graphics". Real 3D (WebGL through a library such as Three.js) needs the owner's approval as a dependency
-  and a performance check on the TV.

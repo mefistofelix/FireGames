@@ -333,6 +333,7 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
     const door = { x: lot.x + lot.width / 2, y: lot.y + lot.height * 0.72 };
     board.focus(lotCenter(index), 2.1);
     banner(player.name + " è ospite: " + HOTELS[index].name, owner.hex);
+    player.door = door;
     await glide(player, spacePoint(player.space), door);
     player.hidden = true;
     state.night = true;
@@ -345,8 +346,8 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
     await pay(player, owner, amount, nights === 1 ? "1 notte" : nights + " notti");
     state.night = false;
     player.hidden = false;
-    if (player.bankrupt || over) return;
-    await glide(player, door, spacePoint(player.space));
+    if (!player.bankrupt && !over) await glide(player, door, spacePoint(player.space));
+    player.door = null;
   }
 
   function pieceName(index, stage) {

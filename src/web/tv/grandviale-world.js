@@ -727,12 +727,11 @@ export function createWorld(canvas, state, hotels, spaces) {
     const sharing = state.players.filter((other) => !other.bankrupt && other.space === player.space && !other.move);
     const lane = (sharing.indexOf(player) - (sharing.length - 1) / 2) * 34;
     const base = { x: space.x + Math.sin(heading) * lane, y: space.y + Math.cos(heading) * lane, heading, person: null };
-    if (!player.glide && !player.hidden) return base;
+    const door = player.door; // set by the game while the team visits a hotel
+    if (!door) return base;
 
     // visiting a hotel: the car pulls over towards the door, the guest walks the rest and goes in
-    const door = player.glide ? (player.glide.from.x === space.x && player.glide.from.y === space.y ? player.glide.to : player.glide.from) : player.door;
-    player.door = door;
-    let progress = 1;
+    let progress = player.hidden ? 1 : 0;
     if (player.glide) {
       const t = Math.min(1, (now - player.glide.start) / player.glide.duration);
       progress = player.glide.to === door ? t : 1 - t;
