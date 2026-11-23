@@ -42,8 +42,8 @@ passa il telecomando. **Indietro** due volte termina la partita.
 
 I dadi sono due: quello **numerato** (per muoversi e per le notti) e quello dei **permessi**. Ogni lancio lo
 fa la squadra, premendo. Sulla TV: in alto un pannello per squadra con soldi e atti di proprietà, in basso a
-sinistra i passi del turno; i lotti su cui si sta scegliendo si illuminano e la telecamera gira dal lato da cui
-si vede meglio.
+sinistra i passi del turno; i lotti e le caselle su cui si sta scegliendo si illuminano, la telecamera segue la
+squadra di turno e gli edifici che le coprono l'auto diventano trasparenti.
 
 - Si lancia il dado numerato e si avanza sul viale. Due macchine non stanno mai sulla stessa casella: chi arriva
   su una casella occupata prosegue fino alla prima libera. Con un **sei** si tira ancora.
@@ -56,7 +56,9 @@ si vede meglio.
   Alza la tariffa.
 - **Regalo** 🎁: un pezzo di hotel gratis, senza permesso.
 - **Municipio** 🏛️: passandoci si può aprire un **ingresso** per ogni proprio hotel. Le caselle **Ingresso** 🚪
-  ne regalano uno.
+  ne regalano uno. La casella dell'ingresso si sceglie tra quelle che toccano il lotto, e ne tiene uno solo: gli
+  hotel stanno sui due lati del viale, e su una casella contesa chi apre per primo toglie il posto a quello di
+  fronte.
 - Chi si ferma su un ingresso altrui entra in hotel, lancia il dado per le **notti** e paga.
 - Chi non può pagare mette **all'asta** i propri hotel, senza prezzo minimo; se nessuno offre l'hotel viene
   demolito. Se non basta è bancarotta. Vince l'ultima squadra rimasta, o la più ricca se la partita viene

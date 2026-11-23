@@ -7,22 +7,20 @@
 
 import { euro } from "../shared/config.js";
 import * as sound from "../shared/sound.js";
-import { chipCenter, createBoard, lotDoor, nearestSpaces, spacePoint } from "./grandviale-board.js";
+import { borderingSpaces, chipCenter, createBoard, lotDoor, spacePoint } from "./grandviale-board.js";
 
 const START_CASH = 12000;
 const SALARY = 2000;
 const HOP_MS = 260;
 const AUCTION_STEP = 500;
-const HOTEL_REACH = 3; // a lot is as long as three spaces of the avenue
 const BANK_SPACE = 0;
-const MUNICIPIO_SPACE = 14;
+const MUNICIPIO_SPACE = 16;
 const PERMIT_FACES = ["si", "si", "si", "no", "gratis", "doppio"];
 
-// What a team may do on each of the 28 spaces of the avenue.
-const SPACES = [
-  "bank", "buy", "build", "buy", "build", "free", "buy", "build", "buy", "build", "gift", "buy", "build", "buy",
-  "municipio", "buy", "build", "buy", "build", "free", "buy", "build", "buy", "build", "gift", "buy", "build", "buy",
-];
+// What a team may do on each of the 32 spaces of the avenue (the same list is in src/art/pixelart.py).
+const HALF = ["buy", "build", "buy", "build", "free", "buy", "build", "buy", "build", "gift", "buy", "build", "buy", "build", "buy"];
+const SPACES = ["bank", ...HALF, "municipio", ...HALF];
+const SPACE_NAME = { bank: "Banca", buy: "Acquisti", build: "Cantiere", free: "Ingresso", gift: "Regalo", municipio: "Municipio" };
 
 const SPACE_TEXT = {
   bank: "Banca.",
@@ -37,26 +35,28 @@ const SPACE_TEXT = {
 // the others are buildings. rates: price of one night with that many pieces. corner: where the lot is on the
 // board (all lots are LOT wide); the pictures are drawn by src/art/pixelart.py, which lists the hotels in this
 // same order with the same corners and the same number of pieces.
-// A hotel is "next to" the HOTEL_REACH spaces nearest to its lot: there it can be bought and has its entrances.
-// Number of buildings, land, building and entrance prices follow the eight title deeds of the classic rules,
-// from the one-building guest house to the big ones; names, places and night rates are ours.
+// A hotel is "next to" the spaces that touch its lot: there it can be bought and has its entrances. The lots
+// stand on both sides of the avenue, so two hotels facing each other are next to the same spaces: a space
+// takes one entrance only, and the first hotel to open one there takes that place from the hotel opposite.
+// Number of buildings and every price (land, buildings, leisure area, entrance, night) follow the eight title
+// deeds of the classic rules, from the one-building guest house to the big ones; names and places are ours.
 const LOT = 44;
 const HOTEL_LIST = [
-  { name: "Pensione Girasole", accent: "#e9c46a", land: 500, stages: [1800, 250], entrance: 100, rates: [100, 150], corner: [91, 126] },
-  { name: "Locanda del Faro", accent: "#e76f51", land: 1000, stages: [2200, 1400, 1400, 500], entrance: 100, rates: [100, 200, 300, 400], corner: [44, 126] },
-  { name: "Albergo Tre Pini", accent: "#52b788", land: 1500, stages: [2400, 1000, 500, 1000], entrance: 100, rates: [100, 250, 350, 450], corner: [138, 126] },
-  { name: "Rifugio Stella Alpina", accent: "#a47148", land: 2000, stages: [2600, 1200, 1200, 2000], entrance: 150, rates: [150, 300, 400, 550], corner: [44, 0] },
-  { name: "Villa Ortensia", accent: "#b388eb", land: 2500, stages: [3600, 2600, 1800, 1800, 3000], entrance: 200, rates: [150, 350, 500, 650, 800], corner: [182, 63] },
-  { name: "Grand Hotel Aurora", accent: "#ff8fab", land: 2500, stages: [3500, 2500, 2500, 1750, 1750, 2500], entrance: 200, rates: [150, 350, 500, 650, 800, 1000], corner: [0, 63] },
-  { name: "Palazzo Belvedere", accent: "#f4a261", land: 3000, stages: [3300, 2200, 1800, 1800, 1800, 4000], entrance: 250, rates: [200, 350, 550, 750, 950, 1100], corner: [138, 0] },
-  { name: "Torre Zaffiro", accent: "#4895ef", land: 3500, stages: [5000, 3000, 2250, 1750, 5000], entrance: 250, rates: [200, 400, 600, 850, 1050], corner: [91, 0] },
+  { name: "Pensione Girasole", accent: "#e9c46a", land: 500, stages: [1800, 250], entrance: 100, rates: [50, 150], corner: [253, 99] },
+  { name: "Locanda del Faro", accent: "#e76f51", land: 1000, stages: [2200, 1400, 1400, 500], entrance: 100, rates: [50, 100, 200, 400], corner: [127, 194] },
+  { name: "Albergo Tre Pini", accent: "#52b788", land: 1500, stages: [2400, 1000, 500, 1000], entrance: 100, rates: [100, 100, 200, 300], corner: [127, 128] },
+  { name: "Rifugio Stella Alpina", accent: "#a47148", land: 2000, stages: [2600, 1200, 1200, 2000], entrance: 150, rates: [100, 100, 250, 500], corner: [127, 71] },
+  { name: "Villa Ortensia", accent: "#b388eb", land: 2500, stages: [3600, 2600, 1800, 1800, 3000], entrance: 200, rates: [150, 300, 300, 450, 600], corner: [76, 99] },
+  { name: "Grand Hotel Aurora", accent: "#ff8fab", land: 2500, stages: [3500, 2500, 2500, 1750, 1750, 2500], entrance: 200, rates: [200, 350, 500, 500, 650, 1000], corner: [180, 99] },
+  { name: "Palazzo Belvedere", accent: "#f4a261", land: 3000, stages: [3300, 2200, 1800, 1800, 1800, 4000], entrance: 250, rates: [150, 300, 300, 300, 450, 750], corner: [6, 99] },
+  { name: "Torre Zaffiro", accent: "#4895ef", land: 3500, stages: [5000, 3000, 2250, 1750, 5000], entrance: 250, rates: [200, 400, 600, 800, 1200], corner: [127, 4] },
 ];
 
 const HOTELS = HOTEL_LIST.map((hotel) => ({
   ...hotel,
   buildings: hotel.stages.length - 1,
   lot: { x: hotel.corner[0], y: hotel.corner[1], width: LOT, height: LOT },
-  spaces: nearestSpaces({ x: hotel.corner[0] + LOT / 2, y: hotel.corner[1] + LOT / 2 }, HOTEL_REACH),
+  spaces: borderingSpaces({ x: hotel.corner[0], y: hotel.corner[1], width: LOT, height: LOT }),
 }));
 
 function wait(milliseconds) {
@@ -74,6 +74,7 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
     current: 0,
     step: 0,         // where the turn is: 0 roll, 1 move, 2 the space, 3 end (shown on the TV)
     highlight: [],   // hotels the waiting question is about: their lots glow on the board
+    spots: [],       // spaces the waiting question is about: they glow too
     mostTeams: seats.length,
     die: { visible: false },
     tray: { number: null, permit: null }, // last result of the two dice, shown in a corner
@@ -151,8 +152,10 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
   function ask(player, status, buttons) {
     return new Promise((resolve) => {
       prompt = { peerId: player.peerId, player, status, buttons, resolve };
-      const about = buttons.map((button) => button.id.split(":")[1]).filter((number) => number !== undefined);
-      state.highlight = [...new Set(about.map(Number))];
+      const about = (verb) => buttons.map((button) => button.id.split(":")).filter((parts) => parts.length > 1 && (parts[0] === "space") === verb)
+        .map((parts) => Number(parts[1]));
+      state.highlight = [...new Set(about(false))];
+      state.spots = about(true);
       refreshViews();
     });
   }
@@ -177,6 +180,7 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
     const resolve = prompt.resolve;
     prompt = null;
     state.highlight = [];
+    state.spots = [];
     refreshViews();
     resolve(id);
   }
@@ -450,12 +454,34 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
     await construct(player, index, count, cost);
   }
 
-  function freeEntranceSpace(index) {
-    return HOTELS[index].spaces.find((space) => !state.entranceAt.has(space));
+  function freeEntranceSpaces(index) {
+    return HOTELS[index].spaces.filter((space) => !state.entranceAt.has(space));
   }
 
-  function addEntrance(player, index, cost) {
-    const space = freeEntranceSpace(index);
+  function freeEntranceSpace(index) {
+    return freeEntranceSpaces(index)[0];
+  }
+
+  // The hotel on the other side of a space, if any: an entrance there takes that place away from it.
+  function oppositeHotel(index, space) {
+    return HOTELS.findIndex((hotel, other) => other !== index && hotel.spaces.includes(space));
+  }
+
+  // The team chooses the space of the new entrance among the free ones next to the lot.
+  async function addEntrance(player, index, cost) {
+    const free = freeEntranceSpaces(index);
+    let space = free[0];
+    if (free.length > 1) {
+      board.focus(lotCenter(index), 1.7);
+      const buttons = free.map((candidate) => {
+        const opposite = oppositeHotel(index, candidate);
+        const sub = opposite < 0 ? "" : "contesa";
+        return { id: "space:" + candidate, label: "Casella " + (candidate + 1) + " · " + SPACE_NAME[SPACES[candidate]], sub, kind: candidate === free[0] ? "primary" : "plain" };
+      });
+      const answer = await ask(player, "Dove aprite l'ingresso di " + HOTELS[index].name + "? Su una casella entra un solo ingresso: su quelle contese, chi arriva prima toglie il posto all'hotel di fronte.", buttons);
+      if (over) return;
+      space = Number(answer.split(":")[1]);
+    }
     state.entranceAt.set(space, index);
     state.hotels[index].entrances.push(space);
     state.hotels[index].invested += cost;
@@ -552,12 +578,12 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
         turn.spaceUsed = true;
       }
       if (verb === "free") {
-        addEntrance(player, index, 0);
+        await addEntrance(player, index, 0);
         await wait(1500);
         turn.spaceUsed = true;
       }
       if (verb === "door") {
-        addEntrance(player, index, HOTELS[index].entrance);
+        await addEntrance(player, index, HOTELS[index].entrance);
         await wait(1500);
         turn.entrancesBought.push(index);
       }

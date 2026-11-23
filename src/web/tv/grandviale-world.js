@@ -1,22 +1,25 @@
 // Grand Viale: the board, drawn as isometric pixel art on a small canvas (960x540) that the page scales up
 // with hard pixels. Every picture comes from src/web/assets/grandviale/pixel, drawn by src/art/pixelart.py
 // together with board.json, which says where each picture goes and in which order.
-// The board is drawn from two opposite sides ("views"): the camera goes round to the side from which the
-// place it looks at is not hidden by the hotels.
+// The camera only slides and zooms, without cuts; a building that covers the car of the team in turn
+// becomes see-through. (board.json may hold more than one "view" of the board, seen from other sides: the
+// script draws one today, because going round can only be a cut in pixel art.)
 // This module only reads the game state each frame; the game moves the camera with focus() and overview().
 
 import { COLORS } from "../shared/config.js";
-import { lotDoor, ringDirection, ringPoint } from "./grandviale-path.js";
+import { lotDoor, ringHeading, ringPoint } from "./grandviale-path.js";
 
 const BASE = "../assets/grandviale/pixel/";
 const VIEW_WIDTH = 960;
 const VIEW_HEIGHT = 540;
 const VIEW_CENTER_Y = 292;   // a little below the middle: the team panels cover the top of the screen
+const VIEW_CENTER_X = 440;   // a little left of the middle: the remote menu is on the right
 const BUILD_MS = 1300;       // how long a new piece takes to rise (the game waits as long)
 const TURN_MS = 260;         // half of the time the camera takes to go round to the other side
 const BOARD_CENTER = { x: 113, y: 85 };
 const PERMIT_FACES = ["si", "no", "gratis", "doppio"];
-const DIRECTIONS = ["xp", "yp", "xn", "yn"]; // each quarter turn of the board moves a direction to the next one
+const CAR_HEADINGS = 16;     // the cars are drawn looking in sixteen directions
+const SEE_THROUGH = 0.3;     // how solid a picture stays when it covers the car of the team in turn
 
 export function createWorld(canvas, state, hotels) {
   canvas.width = VIEW_WIDTH;
@@ -105,7 +108,7 @@ export function createWorld(canvas, state, hotels) {
       hop = Math.sin(t * Math.PI) * 1.5;
     }
     const here = ringPoint(progress);
-    const pose = { x: here.x, y: here.y, z: board.ground + 1 + hop, direction: ringDirection(progress), person: null };
+    const pose = { x: here.x, y: here.y, z: board.ground + 1 + hop, heading: ringHeading(progress), person: null };
     const door = player.door; // set by the game while the team visits a hotel
     if (!door) return pose;
 
@@ -150,6 +153,26 @@ export function createWorld(canvas, state, hotels) {
     context.strokeStyle = colour;
     context.lineWidth = width;
     context.stroke();
+  }
+
+  // True when a picture of the board is in front of a point and over it on the screen.
+  function covers(entry, picture, top, point) {
+    if (!point) return false;
+    const seen = turned(point.x, point.y);
+    const [x0, y0, x1, y1] = entry.r;
+    const inside = seen.x >= x0 && seen.y >= y0 && seen.x < x1 && seen.y < y1;
+    if (inside || seen.x >= x1 || seen.y >= y1) return false;
+    const pixel = project(point.x, point.y);
+    return pixel.x > entry.x + 6 && pixel.x < entry.x + picture.naturalWidth - 6 &&
+      pixel.y > entry.y + top && pixel.y < entry.y + picture.naturalHeight;
+  }
+
+  // Sets how solid the next picture is drawn: it fades when it covers the point of interest.
+  function fade(entry, picture, top, point, seconds) {
+    const wanted = covers(entry, picture, top, point) ? SEE_THROUGH : 1;
+    const solid = entry.solid === undefined ? 1 : entry.solid;
+    entry.solid = solid + (wanted - solid) * Math.min(1, seconds * 5);
+    context.globalAlpha = entry.solid;
   }
 
   function drawHotel(index, entry, now) {
@@ -211,7 +234,7 @@ export function createWorld(canvas, state, hotels) {
     }
   }
 
-  function drawScene(now) {
+  function drawScene(now, seconds) {
     const ground = image("ground" + suffix());
     if (ready(ground)) context.drawImage(ground, 0, 0);
 
@@ -233,9 +256,10 @@ export function createWorld(canvas, state, hotels) {
       if (player.bankrupt) return;
       const pose = carPose(player, now);
       const colour = colourIndex(player);
-      const direction = DIRECTIONS[(DIRECTIONS.indexOf(pose.direction) + view.turns) % 4];
+      const turns = Math.round((pose.heading + view.turns * Math.PI / 2) / (Math.PI * 2 / CAR_HEADINGS));
+      const heading = ((turns % CAR_HEADINGS) + CAR_HEADINGS) % CAR_HEADINGS;
       cars.push({ player, pose });
-      moving.push({ at: placeInOrder(pose.x, pose.y), depth: pose.x + pose.y, name: "car-" + colour + "-" + direction, x: pose.x, y: pose.y, z: pose.z });
+      moving.push({ at: placeInOrder(pose.x, pose.y), depth: pose.x + pose.y, name: "car-" + colour + "-" + heading, x: pose.x, y: pose.y, z: pose.z });
       if (!pose.person) return;
       const person = pose.person;
       const onLot = hotels.some((hotel) => person.x >= hotel.lot.x && person.x < hotel.lot.x + hotel.lot.width &&
@@ -261,16 +285,36 @@ export function createWorld(canvas, state, hotels) {
         const thing = moving[next++];
         drawSprite(thing.name, thing.x, thing.y, thing.z);
       }
-      if (entry.hotel !== undefined) drawHotel(entry.hotel, entry, now);
-      else if (ready(image(entry.f))) context.drawImage(image(entry.f), entry.x, entry.y);
+      // what covers the car of the team in turn becomes see-through, and solid again afterwards
+      const interest = current && !state.finished ? current.pose : null;
+      if (entry.hotel !== undefined) {
+        const stage = state.hotels[entry.hotel].stage;
+        const picture = image("hotel-" + entry.hotel + "-" + stage + suffix());
+        if (ready(picture)) fade(entry, picture, view.hotels[entry.hotel].tops[stage], interest, seconds);
+        drawHotel(entry.hotel, entry, now);
+      } else if (ready(image(entry.f))) {
+        fade(entry, image(entry.f), 0, interest, seconds);
+        context.drawImage(image(entry.f), entry.x, entry.y);
+      }
+      context.globalAlpha = 1;
     });
     while (next < moving.length) {
       const thing = moving[next++];
       drawSprite(thing.name, thing.x, thing.y, thing.z);
     }
 
-    // the lots the waiting question is about glow, so that everybody sees what is being chosen
+    // the lots and the spaces the waiting question is about glow, so that everybody sees what is being chosen
     const pulse = 0.5 + Math.sin(now / 220) * 0.5;
+    for (const space of state.spots || []) {
+      const centre = project(ringPoint(space).x, ringPoint(space).y);
+      context.beginPath();
+      context.ellipse(centre.x + 2, centre.y + 1, 17 + pulse * 3, 8.5 + pulse * 1.5, 0, 0, Math.PI * 2);
+      context.fillStyle = "rgba(255, 255, 255, " + (0.15 + pulse * 0.3) + ")";
+      context.fill();
+      context.strokeStyle = "rgba(255, 240, 150, " + (0.6 + pulse * 0.4) + ")";
+      context.lineWidth = 3;
+      context.stroke();
+    }
     for (const index of state.highlight || []) {
       const lot = hotels[index].lot;
       outline(lot.x, lot.y, lot.x + lot.width, lot.y + lot.height);
@@ -340,7 +384,7 @@ export function createWorld(canvas, state, hotels) {
   // Pixel of the view's picture -> pixel of the canvas.
   function toView(x, y) {
     return {
-      x: Math.round(VIEW_WIDTH / 2 - camera.x * camera.scale) + x * camera.scale,
+      x: Math.round(VIEW_CENTER_X - camera.x * camera.scale) + x * camera.scale,
       y: Math.round(VIEW_CENTER_Y - camera.y * camera.scale) + y * camera.scale,
     };
   }
@@ -357,7 +401,11 @@ export function createWorld(canvas, state, hotels) {
   }
 
   function goalFor(which) {
-    if (!target) return { x: which.size[0] / 2, y: which.size[1] / 2 - 24, scale: 1 };
+    if (!target) {
+      // the whole board: as large as it fits under the team panels
+      const fit = Math.min(1, (VIEW_WIDTH - 20) / which.size[0], (VIEW_HEIGHT - 70) / which.size[1]);
+      return { x: which.size[0] / 2, y: which.size[1] / 2 - 10, scale: fit };
+    }
     const centre = project(target.point.x, target.point.y, undefined, which);
     return { x: centre.x, y: centre.y - 14, scale: target.scale };
   }
@@ -393,17 +441,21 @@ export function createWorld(canvas, state, hotels) {
 
     // the camera moves at an unhurried pace towards where the game points it
     const goal = goalFor(view);
-    const ease = 1 - Math.exp(-seconds * 2.6);
+    const ease = 1 - Math.exp(-seconds * 2.2);
     camera.x += (goal.x - camera.x) * ease;
     camera.y += (goal.y - camera.y) * ease;
     camera.scale += (goal.scale - camera.scale) * ease;
-    if (Math.abs(goal.scale - camera.scale) < 0.01) camera.scale = goal.scale;
+    if (Math.abs(goal.scale - camera.scale) < 0.004) camera.scale = goal.scale;
+    // hard pixels only at whole scales: in between, and for the whole board, the picture is smoothed so
+    // that zooming does not flicker
+    context.imageSmoothingEnabled = !Number.isInteger(camera.scale);
     night += ((state.night ? 1 : 0) - night) * Math.min(1, seconds * 2.2);
 
     const corner = toView(0, 0);
     context.setTransform(camera.scale, 0, 0, camera.scale, corner.x, corner.y);
-    drawScene(now);
+    drawScene(now, seconds);
     context.setTransform(1, 0, 0, 1, 0, 0);
+    context.imageSmoothingEnabled = false;
     drawNight();
     if (veil > 0) {
       context.fillStyle = "rgba(90, 61, 43, " + Math.max(0, Math.min(1, veil)) + ")";

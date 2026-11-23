@@ -3,8 +3,7 @@
 # per voxel (2:1 isometric). Run from the repository root:
 #   uv run --no-project --with pillow python -I src/art/pixelart.py
 # A picture of the whole board with every hotel complete goes to build/preview/board-<view>.png.
-# The board is drawn from two opposite sides (VIEWS): the game shows the side from which nothing hides
-# what is happening.
+# The script can draw the board from several sides (VIEWS); the game uses one.
 #
 # Board coordinates (the same the game uses): x grows to the lower right of the screen, y to the lower left,
 # z up; one unit is one voxel. A voxel at (x, y, z) is drawn at pixel ((x - y) * 2, x + y - 2 * z).
@@ -573,17 +572,18 @@ def same(x, y):
     return (x, y)
 
 
-# In the order of HOTEL_LIST in grandviale.js: model, pieces (buildings + leisure area), corner of the lot,
-# how the model is turned, where the crane stands in the lot and how tall it is.
-HOTELS = [
-    (girasole, 2, (91, 126), turn_front, (38, 26), 22),
-    (faro, 4, (44, 126), same, (40, 22), 30),
-    (trepini, 4, (138, 126), turn_front, (27, 40), 26),
-    (stella, 4, (44, 0), same, (36, 26), 24),
-    (ortensia, 5, (182, 63), turn_right, (38, 34), 30),
-    (aurora, 6, (0, 63), turn_left, (40, 20), 40),
-    (belvedere, 6, (138, 0), same, (40, 22), 34),
-    (zaffiro, 5, (91, 0), same, (39, 22), 72),
+# In the order of HOTEL_LIST in grandviale.js: model, pieces (buildings + leisure area), where the lot is
+# (outside or inside the avenue, and on which side of its centre), how the model is turned so that its gate
+# faces the avenue, where the crane stands in the lot and how tall it is.
+HOTEL_PLAN = [
+    (girasole, 2, ("out", (1, 0)), turn_right, (38, 26), 22),
+    (faro, 4, ("out", (0, 1)), same, (40, 22), 30),
+    (trepini, 4, ("in", (0, 1)), same, (27, 40), 26),
+    (stella, 4, ("in", (0, -1)), turn_front, (36, 26), 24),
+    (ortensia, 5, ("in", (-1, 0)), turn_right, (38, 34), 30),
+    (aurora, 6, ("in", (1, 0)), turn_left, (40, 20), 40),
+    (belvedere, 6, ("out", (-1, 0)), turn_left, (40, 22), 34),
+    (zaffiro, 5, ("out", (0, -1)), same, (39, 22), 72),
 ]
 
 
@@ -728,11 +728,82 @@ def permit_die(sign):
 
 # ---------------------------------------------------------------- the board
 
-WIDTH, DEPTH = 226, 170   # the playing area: x from 0 to WIDTH, y from 0 to DEPTH
-CORNERS = [(50, 50), (176, 50), (176, 120), (50, 120)]  # the avenue; space 0 is the first corner
-STEP = 14                 # distance between two spaces
-KINDS = ["bank", "buy", "build", "buy", "build", "free", "buy", "build", "buy", "build", "gift", "buy", "build", "buy",
-         "municipio", "buy", "build", "buy", "build", "free", "buy", "build", "buy", "build", "gift", "buy", "build", "buy"]
+WIDTH, DEPTH = 298, 242   # the playing area: x from 0 to WIDTH, y from 0 to DEPTH
+GROUND = -4               # z of the top layer of the board; cars drive at GROUND + 1
+
+# The avenue is a closed curve: an oval that swells and narrows a little. The same formula is in
+# grandviale-path.js: change them together. Space 0 (the Banca) is at the far left of the picture and the
+# spaces follow each other at equal distances along the curve.
+CENTER = (149, 121)
+RADIUS = (92, 64)
+CURVE_START = math.pi * 1.25
+CURVE_SAMPLES = 1440
+SPACE_COUNT = 32
+ROAD = 6                  # half the width of the roadway
+LOT_GAP = 9               # from the middle of the avenue to the edge of a lot
+REACH = 16                # a lot is next to the spaces whose centre is within this distance of it
+
+
+def curve(turn):  # turn: 0..1 round the avenue
+    angle = CURVE_START + turn * math.pi * 2
+    rx = RADIUS[0] + 3 * math.cos(3 * angle + 0.6)
+    ry = RADIUS[1] + 3 * math.sin(2 * angle + 0.3)
+    return (CENTER[0] + rx * math.cos(angle), CENTER[1] + ry * math.sin(angle))
+
+
+SAMPLES = [curve(k / CURVE_SAMPLES) for k in range(CURVE_SAMPLES)]
+WALKED = [0.0]
+for k in range(CURVE_SAMPLES):
+    a, b = SAMPLES[k], SAMPLES[(k + 1) % CURVE_SAMPLES]
+    WALKED.append(WALKED[-1] + math.hypot(b[0] - a[0], b[1] - a[1]))
+LENGTH = WALKED[-1]
+
+
+def along(distance):  # point of the avenue after that much road from space 0
+    distance %= LENGTH
+    low, high = 0, CURVE_SAMPLES
+    while high - low > 1:
+        middle = (low + high) // 2
+        if WALKED[middle] <= distance:
+            low = middle
+        else:
+            high = middle
+    a, b = SAMPLES[low], SAMPLES[(low + 1) % CURVE_SAMPLES]
+    t = (distance - WALKED[low]) / max(WALKED[low + 1] - WALKED[low], 1e-9)
+    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+
+
+def space_points():
+    return [along(index * LENGTH / SPACE_COUNT) for index in range(SPACE_COUNT)]
+
+
+def distance_to_rect(point, rect):
+    dx = max(rect[0] - point[0], 0, point[0] - rect[2])
+    dy = max(rect[1] - point[1], 0, point[1] - rect[3])
+    return math.hypot(dx, dy)
+
+
+def distance_to_avenue(rect):
+    return min(distance_to_rect(sample, rect) for sample in SAMPLES)
+
+
+# The corner of a lot: pushed away from the avenue, along one axis, until its edge is LOT_GAP from it.
+def lot_corner(side, direction):
+    step = 1 if side == "out" else -1
+    reach = (RADIUS[0] if direction[0] else RADIUS[1]) + step * (LOT_GAP + S / 2 - 4)
+    while True:
+        x = round(CENTER[0] + direction[0] * reach - S / 2)
+        y = round(CENTER[1] + direction[1] * reach - S / 2)
+        if distance_to_avenue((x, y, x + S, y + S)) >= LOT_GAP:
+            return (x, y)
+        reach += step
+
+
+HOTELS = [(model, pieces, lot_corner(*where), turn, crane_at, crane_height)
+          for model, pieces, where, turn, crane_at, crane_height in HOTEL_PLAN]
+
+HALF = ["buy", "build", "buy", "build", "free", "buy", "build", "buy", "build", "gift", "buy", "build", "buy", "build", "buy"]
+KINDS = ["bank"] + HALF + ["municipio"] + HALF
 KIND_COLOUR = {"bank": "#ffd23f", "buy": "#2ec46d", "build": "#f77f00", "free": "#35c6f0", "gift": "#ff6fb5",
                "municipio": "#9b5de5"}
 KIND_SIGN = {
@@ -743,17 +814,6 @@ KIND_SIGN = {
     "bank": ["..##..", ".####.", "######", ".#..#.", ".#..#.", "######"],
     "municipio": ["..#...", "..##..", "..#...", ".###..", "#####.", "#####."],
 }
-GROUND = -4               # z of the top layer of the board; cars drive at GROUND + 1
-
-
-def space_points():
-    points = []
-    for n, (x0, y0) in enumerate(CORNERS):
-        x1, y1 = CORNERS[(n + 1) % len(CORNERS)]
-        steps = (abs(x1 - x0) + abs(y1 - y0)) // STEP
-        for s in range(steps):
-            points.append((x0 + (x1 - x0) * s // steps, y0 + (y1 - y0) * s // steps))
-    return points
 
 
 def ground():
@@ -761,48 +821,67 @@ def ground():
     v.box(-8, -8, GROUND - 3, WIDTH + 16, DEPTH + 16, 1, "#b9ab8a")
     v.box(-8, -8, GROUND - 2, WIDTH + 16, DEPTH + 16, 2, PLINTH)
     v.box(-5, -5, GROUND, WIDTH + 10, DEPTH + 10, 1, GRASS)
-    # the sea corner, in front of the lighthouse
-    v.box(-5, 112, GROUND, 47, 64, 1, SAND)
-    v.box(-5, 128, GROUND, 36, 48, 1, WATER)
-    v.box(-5, 172, GROUND, 96, 4, 1, WATER)
-    for i in range(30):
-        v.put(-4 + int(rnd(i, 41) * 34), 129 + int(rnd(i, 42) * 46), GROUND, WHITE)
-    # the car park and the public garden, at the two right corners
-    v.box(188, 4, GROUND, 36, 38, 1, ASPHALT)
-    for i in range(190, 222, 6):
-        v.box(i, 6, GROUND, 1, 12, 1, WHITE)
-        v.box(i, 28, GROUND, 1, 12, 1, WHITE)
-    for i in range(190, 224):
-        for j in range(132, 168):
-            if ((i - 207) / 14) ** 2 + ((j - 150) / 12) ** 2 <= 1:
+    # the sea, at the near left corner and in front of the lighthouse
+    v.box(-5, 178, GROUND, 126, 69, 1, SAND)
+    v.box(-5, 186, GROUND, 118, 61, 1, WATER)
+    v.box(-5, 238, GROUND, 190, 9, 1, WATER)
+    for i in range(60):
+        v.put(-4 + int(rnd(i, 41) * 114), 188 + int(rnd(i, 42) * 56), GROUND, WHITE)
+    # the car park and the pond of the public garden, at the two right corners
+    v.box(240, 6, GROUND, 50, 40, 1, ASPHALT)
+    for i in range(243, 288, 6):
+        v.box(i, 8, GROUND, 1, 13, 1, WHITE)
+        v.box(i, 31, GROUND, 1, 13, 1, WHITE)
+    for i in range(256, 296):
+        for j in range(196, 236):
+            if ((i - 276) / 17) ** 2 + ((j - 216) / 15) ** 2 <= 1:
                 v.put(i, j, GROUND, WATER)
-    # the avenue
-    for n, (x0, y0) in enumerate(CORNERS):
-        x1, y1 = CORNERS[(n + 1) % len(CORNERS)]
-        v.box(min(x0, x1) - 6, min(y0, y1) - 6, GROUND, abs(x1 - x0) + 12, abs(y1 - y0) + 12, 1, PAVING)
-    for n, (x0, y0) in enumerate(CORNERS):
-        x1, y1 = CORNERS[(n + 1) % len(CORNERS)]
-        v.box(min(x0, x1) - 5, min(y0, y1) - 5, GROUND, abs(x1 - x0) + 10, abs(y1 - y0) + 10, 1, ASPHALT)
-    for (x, y), kind in zip(space_points(), KINDS):
-        v.box(x - 5, y - 5, GROUND, 10, 10, 1, WHITE)
-        v.box(x - 4, y - 4, GROUND, 8, 8, 1, KIND_COLOUR[kind])
+    # the avenue: kerb, roadway, then the printed spaces, each bent along the curve
+    for k in range(0, CURVE_SAMPLES, 2):
+        v.cyl(SAMPLES[k][0], SAMPLES[k][1], GROUND, ROAD + 1.2, 1, PAVING)
+    for k in range(0, CURVE_SAMPLES, 2):
+        v.cyl(SAMPLES[k][0], SAMPLES[k][1], GROUND, ROAD, 1, ASPHALT)
+    for index, kind in enumerate(KINDS):
+        middle = index * LENGTH / SPACE_COUNT
+        for half in range(-12, 13):
+            x, y = along(middle + half * 0.5)
+            v.cyl(x, y, GROUND, ROAD - 0.6, 1, WHITE)
+        for half in range(-10, 11):
+            x, y = along(middle + half * 0.5)
+            v.cyl(x, y, GROUND, ROAD - 1.6, 1, KIND_COLOUR[kind])
+        x, y = along(middle)
         for j, row in enumerate(KIND_SIGN[kind]):
             for i, cell in enumerate(row):
                 if cell == "#":
-                    v.put(x - 3 + i, y - 3 + j, GROUND, WHITE)
-    # inside the avenue: the lake
-    for i in range(90, 136):
-        for j in range(70, 102):
-            if ((i - 112.5) / 21) ** 2 + ((j - 85.5) / 13) ** 2 <= 1:
-                v.put(i, j, GROUND, WATER)
-            elif ((i - 112.5) / 23) ** 2 + ((j - 85.5) / 15) ** 2 <= 1:
-                v.put(i, j, GROUND, SAND)
+                    v.put(int(x) - 3 + i, int(y) - 3 + j, GROUND, WHITE)
+    v.cyl(CENTER[0], CENTER[1], GROUND, 9, 1, PAVING)
+    return v
+
+
+def small_fountain():
+    v = Vox()
+    fountain(v, 4, 4, 0, 3.6)
+    return v
+
+
+def spun(model, angle, centre):  # a model turned by any angle round a vertical line through centre
+    columns = {}
+    for (x, y, z), c in model.items():
+        columns.setdefault((x, y), []).append((z, c))
+    cos, sin = math.cos(angle), math.sin(angle)
+    v = Vox()
+    for i in range(-10, 11):
+        for j in range(-10, 11):
+            sx = cos * (i + 0.5) + sin * (j + 0.5) + centre[0]
+            sy = -sin * (i + 0.5) + cos * (j + 0.5) + centre[1]
+            for z, c in columns.get((math.floor(sx), math.floor(sy)), ()):
+                v[(i, j, z)] = c
     return v
 
 
 # ---------------------------------------------------------------- drawing
 
-VIEWS = [0, 2]   # quarter turns of the board for each drawn view
+VIEWS = [0]      # quarter turns of the board for each drawn view
 TURNS = 0        # the view being drawn
 
 
@@ -906,36 +985,47 @@ def main():
         os.remove(os.path.join(OUT, old))
 
     # where the things that never move stand: (name, model, x, y, z, footprint)
-    blocked = [(min(x0, x1) - 7, min(y0, y1) - 7, abs(x1 - x0) + 14, abs(y1 - y0) + 14)
-               for (x0, y0), (x1, y1) in zip(CORNERS, CORNERS[1:] + CORNERS[:1])]
-    blocked += [(88, 68, 50, 36), (188, 4, 36, 38), (188, 130, 38, 40), (-5, 126, 40, 50), (0, 0, 44, 58)]
+    blocked = [(4, 4, 44, 58), (240, 6, 50, 40), (-5, 176, 128, 71), (254, 194, 44, 44)]
     blocked += [(lx - 1, ly - 1, S + 2, S + 2) for _, _, (lx, ly), _, _, _ in HOTELS]
+    lots = [(lx, ly, lx + S, ly + S) for _, _, (lx, ly), _, _, _ in HOTELS]
+    for a in lots:
+        for b in lots:
+            assert a is b or a[2] + 2 <= b[0] or b[2] + 2 <= a[0] or a[3] + 2 <= b[1] or b[3] + 2 <= a[1], (a, b)
     placed = []
 
     def stand(name, model, dx, dy, dz, footprint):
         placed.append((name, model, dx, dy, dz, footprint))
         blocked.append((dx - 2, dy - 2, footprint[0] + 4, footprint[1] + 4))
 
-    stand("mountains", mountains(), 0, 0, GROUND + 1, (44, 58))
-    stand("bank", bank(), 60, 58, GROUND + 2, (26, 22))
-    stand("townhall", townhall(), 140, 90, GROUND + 2, (28, 22))
+    stand("mountains", mountains(), 4, 4, GROUND + 1, (44, 58))
+    stand("bank", bank(), 50, 38, GROUND + 2, (26, 22))
+    stand("townhall", townhall(), 224, 180, GROUND + 2, (28, 22))
+    stand("fountain", small_fountain(), CENTER[0] - 4, CENTER[1] - 4, GROUND + 1, (8, 8))
     points = space_points()
-    for n in range(0, len(points), 2):
+    for n in range(0, SPACE_COUNT, 2):  # a lamp every other space, on the outer kerb, where no lot is
         x, y = points[n]
-        inward_x = 7 if x <= 50 else (-7 if x >= 176 else 0)
-        inward_y = 7 if y <= 50 else (-7 if y >= 120 else 0)
-        stand("lamp", lamp(), x + inward_x, y + inward_y, GROUND + 1, (1, 1))
-    for i in range(700):
+        away = math.hypot(x - CENTER[0], y - CENTER[1])
+        lx, ly = round(x + (x - CENTER[0]) / away * 8), round(y + (y - CENTER[1]) / away * 8)
+        if all(distance_to_rect((lx, ly), lot) > 1 for lot in lots):
+            stand("lamp", lamp(), lx, ly, GROUND + 1, (1, 1))
+    for i in range(520):
         x, y = int(rnd(i, 31) * (WIDTH - 4)) + 1, int(rnd(i, 32) * (DEPTH - 4)) + 1
         if any(bx - 2 <= x < bx + bw + 2 and by - 2 <= y < by + bd + 2 for bx, by, bw, bd in blocked):
             continue
+        if distance_to_avenue((x, y, x + 1, y + 1)) < 11:
+            continue
         size = int(rnd(i, 33) * 3)
-        if x + y < 150:
+        if x < 120 and y < 90:
             stand("pine-%d" % size, plant("pine", 8 + size * 3), x, y, GROUND + 1, (1, 1))
-        elif y > 125 and x < 100:
+        elif y > 150 and x < 150:
             stand("palm-%d" % size, plant("palm", 6 + size * 2), x, y, GROUND + 1, (1, 1))
         else:
             stand("tree-%d" % size, plant("tree", 2 + size // 2), x, y, GROUND + 1, (1, 1))
+
+    print("lots:", [list(lot[:2]) for lot in lots])
+    for index, lot in enumerate(lots):
+        near = [n for n, point in enumerate(points) if distance_to_rect(point, lot) <= REACH]
+        print(" hotel", index, "spaces", near, [KINDS[n] for n in near])
 
     views = []
     for number, turns in enumerate(VIEWS):
@@ -1019,11 +1109,8 @@ def main():
     for n, hexa in enumerate(team_colours()):
         model = car(hexa, CAR_KINDS[n % len(CAR_KINDS)])
         length = max(x for x, y, z in model) + 1
-        centre = (length / 2, 2.5, 0)
-        add_sprite("car-%d-xp" % n, model, centre)
-        add_sprite("car-%d-xn" % n, model.turned(lambda x, y: (length - 1 - x, y)), centre)
-        add_sprite("car-%d-yp" % n, model.turned(lambda x, y: (y, x)), (2.5, length / 2, 0))
-        add_sprite("car-%d-yn" % n, model.turned(lambda x, y: (y, length - 1 - x)), (2.5, length / 2, 0))
+        for step in range(16):  # sixteen headings: 0 looks along x, 4 along y
+            add_sprite("car-%d-%d" % (n, step), spun(model, step * math.pi / 8, (length / 2, 2.5)), (0, 0, 0))
         guest = Vox()
         person(guest, 0, 0, 0, hexa)
         add_sprite("person-%d" % n, guest, (0.5, 0.5, 0))

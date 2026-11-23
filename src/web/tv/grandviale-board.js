@@ -6,7 +6,7 @@ import { ringPoint } from "./grandviale-path.js";
 import { createWorld } from "./grandviale-world.js";
 
 export { chipCenter } from "./grandviale-hud.js";
-export { lotDoor, nearestSpaces } from "./grandviale-path.js";
+export { borderingSpaces, lotDoor } from "./grandviale-path.js";
 
 export function spacePoint(index) {
   return ringPoint(index);
