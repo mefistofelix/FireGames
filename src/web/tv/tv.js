@@ -10,7 +10,7 @@ import { startGrandViale } from "./grandviale.js";
 import { startScene } from "./scene.js";
 
 const BACK_CONFIRM_MS = 3000;
-const MIN_TEAMS = 2;
+const MIN_TEAMS = 1;
 const MAX_TEAMS = 4;
 
 // peerId -> {name, color, hex, tilt, honkAt, seenAt, remote}; the first one is the leader.
@@ -110,7 +110,7 @@ function startGame() {
     toast(GAMES[selectedGame].name + " è in arrivo!");
     return;
   }
-  if (players.size < 2) {
+  if (players.size < 1) {
     openChooser();
     return;
   }
@@ -138,10 +138,11 @@ function endGame() {
   sendLobbyToAll();
 }
 
-// Starting with fewer than two teams is not an error: the TV asks how many teams play and adds the missing
-// ones as teams without a phone, who pass the remote around.
+// Starting with nobody seated is not an error: the TV asks how many teams play and adds them as teams
+// without a phone, who pass the remote around. With at least one team the game starts at once, even alone:
+// the others can come in with their phones while the game runs.
 function openChooser() {
-  chooser = { count: MIN_TEAMS };
+  chooser = { count: 2 };
   renderChooser();
 }
 
@@ -163,7 +164,7 @@ function renderChooser() {
   for (let count = MIN_TEAMS; count <= MAX_TEAMS; count++) {
     const row = document.createElement("div");
     row.className = count === chooser.count ? "choice selected" : "choice";
-    row.textContent = count + " squadre";
+    row.textContent = count === 1 ? "1 squadra" : count + " squadre";
     element.append(row);
   }
 }
@@ -332,6 +333,14 @@ function dropSilentPlayers() {
 
 function onGameMessage(peerId, message) {
   if (message.t === "act") game.onAct(peerId, message.id);
+  // a phone that was not seated takes a seat in the running game
+  if (message.t === "hello" && !players.has(peerId)) {
+    join(peerId, message);
+    const player = players.get(peerId);
+    if (player) game.join({ peerId, name: player.name, hex: player.hex });
+  }
+  // a phone without a seat gets the join form, the others their view of the game
+  if (message.t === "peek" && !players.has(peerId)) return link.send(peerId, lobbyFor(peerId));
   if (message.t === "peek" || message.t === "hello") link.send(peerId, game.viewFor(peerId));
 }
 

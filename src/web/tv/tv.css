@@ -178,6 +178,15 @@ h1 span {
   transform: translateX(-50%);
 }
 
+/* During a game the menu stays on the right, over the dice tray: the middle of the board is for the game. */
+.playing #menu {
+  left: auto;
+  right: 2vh;
+  bottom: 13vh;
+  width: 44vh;
+  transform: none;
+}
+
 #menu h2 {
   font-size: 3.2vh;
 }

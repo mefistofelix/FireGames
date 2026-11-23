@@ -31,15 +31,19 @@ I tre giochi sono originali: nomi, tabelloni, personaggi e grafica propri.
 3. Scrivi il nome della squadra, scegli il colore, tocca **Entra**.
 4. La prima squadra entrata sceglie il gioco e lo avvia. Dal telecomando: ◀ ▶ per scegliere, OK per avviare.
 
-**Senza telefono**: basta premere OK per avviare: la TV chiede quante squadre giocano (da 2 a 4) e si gioca
-passandosi il telecomando. In alternativa, nella sala d'attesa ▲ aggiunge una squadra senza telefono (▼ la toglie),
+**Senza telefono**: basta premere OK per avviare: la TV chiede quante squadre giocano (da 1 a 4) e si gioca
+passandosi il telecomando. Si può partire anche da soli: **chi arriva dopo entra a partita in corso**
+inquadrando il QR code. In alternativa, nella sala d'attesa ▲ aggiunge una squadra senza telefono (▼ la toglie),
 anche insieme a squadre col telefono. Durante la
 partita le scelte della squadra di turno compaiono anche sulla TV: ▲ ▼ per scegliere, OK per confermare, e ci si
 passa il telecomando. **Indietro** due volte termina la partita.
 
 ### Grand Viale
 
-I dadi sono due: quello **numerato** (per muoversi e per le notti) e quello dei **permessi**.
+I dadi sono due: quello **numerato** (per muoversi e per le notti) e quello dei **permessi**. Ogni lancio lo
+fa la squadra, premendo. Sulla TV: in alto un pannello per squadra con soldi e atti di proprietà, in basso a
+sinistra i passi del turno; i lotti su cui si sta scegliendo si illuminano e la telecamera gira dal lato da cui
+si vede meglio.
 
 - Si lancia il dado numerato e si avanza sul viale. Due macchine non stanno mai sulla stessa casella: chi arriva
   su una casella occupata prosegue fino alla prima libera. Con un **sei** si tira ancora.

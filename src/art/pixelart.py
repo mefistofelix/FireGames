@@ -2,7 +2,9 @@
 # into src/web/assets/grandviale/pixel. Each object is a small voxel model drawn with three shaded faces
 # per voxel (2:1 isometric). Run from the repository root:
 #   uv run --no-project --with pillow python -I src/art/pixelart.py
-# A picture of the whole board with every hotel complete goes to build/preview/board.png.
+# A picture of the whole board with every hotel complete goes to build/preview/board-<view>.png.
+# The board is drawn from two opposite sides (VIEWS): the game shows the side from which nothing hides
+# what is happening.
 #
 # Board coordinates (the same the game uses): x grows to the lower right of the screen, y to the lower left,
 # z up; one unit is one voxel. A voxel at (x, y, z) is drawn at pixel ((x - y) * 2, x + y - 2 * z).
@@ -563,8 +565,8 @@ def turn_right(x, y):  # for the lot on the right: gate towards low x
     return (S - 1 - y, x)
 
 
-def turn_front(x, y):  # for the lots on the near side: gate towards low y, buildings near the viewer
-    return (x, S - 1 - y)
+def turn_front(x, y):  # for the lots on the near side: gate towards low y
+    return (S - 1 - x, S - 1 - y)
 
 
 def same(x, y):
@@ -657,6 +659,14 @@ def townhall():
     flag(v, 14, 8, 26, 7, "#2a9d8f")
     v.box(12, 15, 0, 4, 3, 1, "#dfe7ef")
     v.box(12, 14, 0, 4, 1, 5, "#7f5539")
+    return v
+
+
+def mountains():
+    v = Vox()
+    for cx, cy, r, h in ((18, 20, 15, 28), (33, 40, 9, 15), (7, 45, 7, 11), (36, 8, 6, 9)):
+        for k in range(h):
+            v.cyl(cx, cy, k, max(r * (1 - k / h), 0.7), 1, SNOW if k > h * 0.6 else ROCK + ["#6f7a8c"])
     return v
 
 
@@ -757,10 +767,6 @@ def ground():
     v.box(-5, 172, GROUND, 96, 4, 1, WATER)
     for i in range(30):
         v.put(-4 + int(rnd(i, 41) * 34), 129 + int(rnd(i, 42) * 46), GROUND, WHITE)
-    # the mountains, behind everything
-    for cx, cy, r, h in ((18, 20, 15, 28), (33, 40, 9, 15), (7, 45, 7, 11), (36, 8, 6, 9)):
-        for k in range(h):
-            v.cyl(cx, cy, GROUND + 1 + k, max(r * (1 - k / h), 0.7), 1, SNOW if k > h * 0.6 else ROCK + ["#6f7a8c"])
     # the car park and the public garden, at the two right corners
     v.box(188, 4, GROUND, 36, 38, 1, ASPHALT)
     for i in range(190, 222, 6):
@@ -796,11 +802,35 @@ def ground():
 
 # ---------------------------------------------------------------- drawing
 
+VIEWS = [0, 2]   # quarter turns of the board for each drawn view
+TURNS = 0        # the view being drawn
+
+
+def turned_cell(x, y, turns):   # where a voxel goes when the board is turned (a quarter turn each time)
+    for _ in range(turns):
+        x, y = -1 - y, x
+    return x, y
+
+
+def turned_offset(x, y, turns):  # the same for a distance or a point
+    for _ in range(turns):
+        x, y = -y, x
+    return x, y
+
+
+def turned_rect(rect, turns):
+    ax, ay = turned_cell(rect[0], rect[1], turns)
+    bx, by = turned_cell(rect[2] - 1, rect[3] - 1, turns)
+    return [min(ax, bx), min(ay, by), max(ax, bx) + 1, max(ay, by) + 1]
+
+
 def lit(c, f):
     return (min(255, int(c[0] * f)), min(255, int(c[1] * f)), min(255, int(c[2] * f)), 255)
 
 
 def bounds_of(v):
+    if TURNS:
+        v = v.turned(lambda x, y: turned_cell(x, y, TURNS))
     xs = [(x - y) * 2 for x, y, z in v]
     ys = [(x + y) - 2 * z for x, y, z in v]
     return (min(xs) - 1, min(ys) - 1, max(xs) - min(xs) + 6, max(ys) - min(ys) + 6)
@@ -809,6 +839,8 @@ def bounds_of(v):
 # Returns the picture and the pixel, in the model's own projection, of its top left corner.
 def render(v, bounds=None, outline=True):
     min_x, min_y, width, height = bounds or bounds_of(v)
+    if TURNS:
+        v = v.turned(lambda x, y: turned_cell(x, y, TURNS))
     image = Image.new("RGBA", (width, height))
     px = image.load()
     for x, y, z in sorted(v, key=lambda p: (p[0] + p[1] + p[2], p[2])):
@@ -867,98 +899,115 @@ def team_colours():
 
 
 def main():
+    global TURNS
     os.makedirs(OUT, exist_ok=True)
     os.makedirs(PREVIEW, exist_ok=True)
     for old in os.listdir(OUT):
         os.remove(os.path.join(OUT, old))
 
-    board, origin = render(ground(), outline=False)
-    save(board, "ground")
-    preview = board.copy()
-
-    def place(image, local, dx=0, dy=0, dz=0):
-        px, py = project(dx, dy, dz)
-        return (local[0] + px - origin[0], local[1] + py - origin[1])
-
-    statics = []   # {f | hotel, x, y, r: [x0, y0, x1, y1]} in drawing order (see below)
+    # where the things that never move stand: (name, model, x, y, z, footprint)
     blocked = [(min(x0, x1) - 7, min(y0, y1) - 7, abs(x1 - x0) + 14, abs(y1 - y0) + 14)
                for (x0, y0), (x1, y1) in zip(CORNERS, CORNERS[1:] + CORNERS[:1])]
     blocked += [(88, 68, 50, 36), (188, 4, 36, 38), (188, 130, 38, 40), (-5, 126, 40, 50), (0, 0, 44, 58)]
+    blocked += [(lx - 1, ly - 1, S + 2, S + 2) for _, _, (lx, ly), _, _, _ in HOTELS]
+    placed = []
 
-    hotels = []
-    for index, (model, pieces, (lx, ly), turn, crane_at, crane_height) in enumerate(HOTELS):
-        complete = model(pieces)
-        crane(complete, crane_at[0], crane_at[1], crane_height)
-        bounds = bounds_of(complete.turned(turn))
-        tops = []  # first row of each stage's picture with something on it: the name goes just above
-        for stage in range(pieces + 1):
-            plain = model(stage)
-            image, local = render(plain.turned(turn), bounds)
-            save(image, "hotel-%d-%d" % (index, stage))
-            tops.append(image.getbbox()[1])
-            if stage == pieces:
-                final = image
-            crane(plain, crane_at[0], crane_at[1], crane_height)
-            image, local = render(plain.turned(turn), bounds)
-            save(image, "hotel-%d-%d-crane" % (index, stage))
-        x, y = place(final, local, lx, ly)
-        hotels.append({"x": x, "y": y, "pieces": pieces, "tops": tops})
-        statics.append({"hotel": index, "x": x, "y": y, "r": [lx, ly, lx + S, ly + S], "image": final})
-        blocked.append((lx - 1, ly - 1, S + 2, S + 2))
-
-    def add_static(name, model, dx, dy, dz, footprint):
-        if not os.path.exists(os.path.join(OUT, name + ".png")):
-            image, local = render(model)
-            save(image, name)
-            add_static.cache[name] = (image, local)
-        image, local = add_static.cache[name]
-        x, y = place(image, local, dx, dy, dz)
-        statics.append({"f": name, "x": x, "y": y, "r": [dx, dy, dx + footprint[0], dy + footprint[1]], "image": image})
+    def stand(name, model, dx, dy, dz, footprint):
+        placed.append((name, model, dx, dy, dz, footprint))
         blocked.append((dx - 2, dy - 2, footprint[0] + 4, footprint[1] + 4))
-    add_static.cache = {}
 
-    add_static("bank", bank(), 60, 58, GROUND + 2, (26, 22))
-    add_static("townhall", townhall(), 140, 90, GROUND + 2, (28, 22))
+    stand("mountains", mountains(), 0, 0, GROUND + 1, (44, 58))
+    stand("bank", bank(), 60, 58, GROUND + 2, (26, 22))
+    stand("townhall", townhall(), 140, 90, GROUND + 2, (28, 22))
     points = space_points()
     for n in range(0, len(points), 2):
         x, y = points[n]
         inward_x = 7 if x <= 50 else (-7 if x >= 176 else 0)
         inward_y = 7 if y <= 50 else (-7 if y >= 120 else 0)
-        add_static("lamp", lamp(), x + inward_x, y + inward_y, GROUND + 1, (1, 1))
-    planted = 0
+        stand("lamp", lamp(), x + inward_x, y + inward_y, GROUND + 1, (1, 1))
     for i in range(700):
         x, y = int(rnd(i, 31) * (WIDTH - 4)) + 1, int(rnd(i, 32) * (DEPTH - 4)) + 1
         if any(bx - 2 <= x < bx + bw + 2 and by - 2 <= y < by + bd + 2 for bx, by, bw, bd in blocked):
             continue
         size = int(rnd(i, 33) * 3)
         if x + y < 150:
-            add_static("pine-%d" % size, plant("pine", 8 + size * 3), x, y, GROUND + 1, (1, 1))
+            stand("pine-%d" % size, plant("pine", 8 + size * 3), x, y, GROUND + 1, (1, 1))
         elif y > 125 and x < 100:
-            add_static("palm-%d" % size, plant("palm", 6 + size * 2), x, y, GROUND + 1, (1, 1))
+            stand("palm-%d" % size, plant("palm", 6 + size * 2), x, y, GROUND + 1, (1, 1))
         else:
-            add_static("tree-%d" % size, plant("tree", 2 + size // 2), x, y, GROUND + 1, (1, 1))
-        planted += 1
+            stand("tree-%d" % size, plant("tree", 2 + size // 2), x, y, GROUND + 1, (1, 1))
 
-    # Drawing order: a thing is drawn before another when it lies wholly behind it along x or along y.
-    def behind(a, b):
-        a_first = a["r"][2] <= b["r"][0] or a["r"][3] <= b["r"][1]
-        b_first = b["r"][2] <= a["r"][0] or b["r"][3] <= a["r"][1]
-        return a_first and not b_first
+    views = []
+    for number, turns in enumerate(VIEWS):
+        TURNS = turns
+        suffix = "-v%d" % number
+        board, origin = render(ground(), outline=False)
+        save(board, "ground" + suffix)
+        preview = board.copy()
 
-    def overlap(a, b):
-        return (a["x"] < b["x"] + b["image"].width and b["x"] < a["x"] + a["image"].width and
-                a["y"] < b["y"] + b["image"].height and b["y"] < a["y"] + a["image"].height)
+        def place(local, dx, dy, dz=0):
+            ox, oy = turned_offset(dx, dy, turns)
+            px, py = project(ox, oy, dz)
+            return (local[0] + px - origin[0], local[1] + py - origin[1])
 
-    waiting = sorted(statics, key=lambda s: s["r"][0] + s["r"][1] + s["r"][2] + s["r"][3])
-    ordered = []
-    while waiting:
-        free = [s for s in waiting if not any(o is not s and overlap(o, s) and behind(o, s) for o in waiting)]
-        chosen = free[0] if free else waiting[0]
-        waiting.remove(chosen)
-        ordered.append(chosen)
-    for entry in ordered:
-        preview.alpha_composite(entry.pop("image"), (entry["x"], entry["y"]))
+        statics = []
+        hotels = []
+        for index, (model, pieces, (lx, ly), turn, crane_at, crane_height) in enumerate(HOTELS):
+            complete = model(pieces)
+            crane(complete, crane_at[0], crane_at[1], crane_height)
+            bounds = bounds_of(complete.turned(turn))
+            tops = []  # first row of each stage's picture with something on it: the name goes just above
+            for stage in range(pieces + 1):
+                plain = model(stage)
+                image, local = render(plain.turned(turn), bounds)
+                save(image, "hotel-%d-%d%s" % (index, stage, suffix))
+                tops.append(image.getbbox()[1])
+                if stage == pieces:
+                    final = image
+                crane(plain, crane_at[0], crane_at[1], crane_height)
+                image, local = render(plain.turned(turn), bounds)
+                save(image, "hotel-%d-%d-crane%s" % (index, stage, suffix))
+            x, y = place(local, lx, ly)
+            hotels.append({"x": x, "y": y, "pieces": pieces, "tops": tops})
+            statics.append({"hotel": index, "x": x, "y": y, "r": turned_rect([lx, ly, lx + S, ly + S], turns), "image": final})
 
+        drawn = {}
+        for name, model, dx, dy, dz, footprint in placed:
+            if name not in drawn:
+                drawn[name] = render(model)
+                save(drawn[name][0], name + suffix)
+            image, local = drawn[name]
+            x, y = place(local, dx, dy, dz)
+            rect = turned_rect([dx, dy, dx + footprint[0], dy + footprint[1]], turns)
+            statics.append({"f": name + suffix, "x": x, "y": y, "r": rect, "image": image})
+
+        # Drawing order: a thing is drawn before another when it lies wholly behind it along x or along y.
+        def behind(a, b):
+            a_first = a["r"][2] <= b["r"][0] or a["r"][3] <= b["r"][1]
+            b_first = b["r"][2] <= a["r"][0] or b["r"][3] <= a["r"][1]
+            return a_first and not b_first
+
+        def overlap(a, b):
+            return (a["x"] < b["x"] + b["image"].width and b["x"] < a["x"] + a["image"].width and
+                    a["y"] < b["y"] + b["image"].height and b["y"] < a["y"] + a["image"].height)
+
+        waiting = sorted(statics, key=lambda s: s["r"][0] + s["r"][1] + s["r"][2] + s["r"][3])
+        ordered = []
+        while waiting:
+            free = [s for s in waiting if not any(o is not s and overlap(o, s) and behind(o, s) for o in waiting)]
+            chosen = free[0] if free else waiting[0]
+            waiting.remove(chosen)
+            ordered.append(chosen)
+        for entry in ordered:
+            preview.alpha_composite(entry.pop("image"), (entry["x"], entry["y"]))
+        preview.save(os.path.join(PREVIEW, "board-%d.png" % number))
+        views.append({
+            "turns": turns, "origin": list(origin), "size": [board.width, board.height],
+            "hotels": hotels, "statics": ordered,
+            "lamps": [[s["x"] + 5, s["y"] + 5] for s in ordered if s.get("f", "").startswith("lamp")],
+        })
+
+    TURNS = 0
     sprites = {}   # name -> offset of the picture's corner from the projected point it stands on
 
     def add_sprite(name, model, anchor):
@@ -966,7 +1015,6 @@ def main():
         save(image, name)
         ax, ay = project(*anchor)
         sprites[name] = [local[0] - ax, local[1] - ay]
-        return image
 
     for n, hexa in enumerate(team_colours()):
         model = car(hexa, CAR_KINDS[n % len(CAR_KINDS)])
@@ -986,17 +1034,12 @@ def main():
     for sign in SIGNS:
         add_sprite("die-" + sign, permit_die(sign), (DIE / 2, DIE / 2, DIE / 2))
 
-    manifest = {
-        "origin": list(origin), "size": [board.width, board.height], "ground": GROUND, "lot": S,
-        "hotels": hotels, "statics": ordered, "sprites": sprites,
-        "lamps": [[s["x"] + 5, s["y"] + 5] for s in ordered if s.get("f") == "lamp"],
-    }
+    manifest = {"ground": GROUND, "lot": S, "views": views, "sprites": sprites}
     with open(os.path.join(OUT, "board.json"), "w", encoding="utf-8", newline="\n") as handle:
         json.dump(manifest, handle, separators=(",", ":"))
-    preview.save(os.path.join(PREVIEW, "board.png"))
     files = os.listdir(OUT)
     print(len(files), "files,", sum(os.path.getsize(os.path.join(OUT, f)) for f in files) // 1024, "KB,",
-          planted, "plants, board", board.size)
+          len(placed), "standing things")
 
 
 main()

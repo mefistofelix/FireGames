@@ -32,7 +32,10 @@ export function chipCenter(index, count) {
   return { x: left + width * (index + 0.5), y: 58, width: width - 16 };
 }
 
-export function createHud(canvas, state) {
+const NOTES = [[5000, "#b388eb"], [1000, "#ff8fab"], [500, "#7fd6a4"], [100, "#ffd166"], [50, "#bfe3ff"]];
+const STEPS = ["Lancia", "Muovi", "Casella", "Fine turno"];
+
+export function createHud(canvas, state, hotels) {
   const context = canvas.getContext("2d");
 
   function resize() {
@@ -86,8 +89,79 @@ export function createHud(canvas, state) {
       context.fillStyle = active ? "#0a7a3b" : "#7CFC9A";
       const cash = player.bankrupt ? "bancarotta" : euro(Math.round(player.shownCash));
       context.fillText(cash, chip.x - chip.width / 2 + 86, 86);
+      if (!player.bankrupt) {
+        if (chip.width > 330) drawNotes(player.cash, chip.x + chip.width / 2 - 20);
+        drawDeeds(player, chip.x - chip.width / 2 + 6);
+      }
       context.globalAlpha = 1;
     });
+  }
+
+  // The team's money as the notes it would keep next to the board, biggest first, fanned from the right.
+  function drawNotes(cash, right) {
+    const notes = [];
+    let left = cash;
+    for (const [value, colour] of NOTES) {
+      while (left >= value && notes.length < 14) {
+        notes.push(colour);
+        left -= value;
+      }
+    }
+    notes.reverse().forEach((colour, index) => {
+      const x = right - 34 - index * 9;
+      context.fillStyle = "rgba(16, 18, 44, 0.9)";
+      context.fillRect(x - 1, 33, 36, 22);
+      context.fillStyle = colour;
+      context.fillRect(x, 34, 34, 20);
+      context.fillStyle = "rgba(255, 255, 255, 0.55)";
+      context.fillRect(x + 12, 39, 10, 10);
+    });
+  }
+
+  // The team's title deeds under its panel: one card per hotel in the hotel's colour, with a mark for each
+  // piece built and a door for each entrance.
+  function drawDeeds(player, left) {
+    let x = left;
+    state.hotels.forEach((status, index) => {
+      if (status.owner !== player) return;
+      const width = 26 + Math.max(status.stage, 1) * 9;
+      context.fillStyle = "rgba(16, 18, 44, 0.9)";
+      roundedRect(context, x, 108, width, 34, 8);
+      context.fillStyle = hotels[index].accent;
+      roundedRect(context, x + 2, 110, width - 4, 30, 6);
+      context.fillStyle = "#14142b";
+      context.font = "900 15px system-ui, sans-serif";
+      context.textAlign = "left";
+      context.fillText(hotels[index].name.split(" ").pop().slice(0, 3).toUpperCase(), x + 6, 124);
+      for (let piece = 0; piece < status.stage; piece++) context.fillRect(x + 7 + piece * 9, 129, 6, 7);
+      context.fillStyle = "#c1121f";
+      for (let door = 0; door < status.entrances.length; door++) context.fillRect(x + width - 9 - door * 5, 113, 3, 8);
+      x += width + 6;
+    });
+  }
+
+  // Where the turn is: the four steps, the current one in the team's colour. Bottom left, out of the way.
+  function drawSteps() {
+    const player = state.players[state.current];
+    if (!player || state.finished || state.step === undefined) return;
+    context.font = "800 24px system-ui, sans-serif";
+    context.textAlign = "left";
+    context.textBaseline = "middle";
+    let x = 28;
+    context.fillStyle = "rgba(16, 18, 44, 0.82)";
+    roundedRect(context, 16, 994, 34 + STEPS.reduce((sum, step) => sum + context.measureText(step).width + 62, 0), 62, 31);
+    STEPS.forEach((step, index) => {
+      const width = context.measureText(step).width + 50;
+      const current = index === state.step;
+      if (current) {
+        context.fillStyle = player.hex;
+        roundedRect(context, x, 1002, width, 46, 23);
+      }
+      context.fillStyle = current ? "#fff" : (index < state.step ? "#7CFC9A" : "#9aa3b8");
+      context.fillText((index < state.step ? "✓ " : (index + 1) + " ") + step, x + 14, 1026);
+      x += width + 12;
+    });
+    context.textBaseline = "alphabetic";
   }
 
   // The two dice of the game with their last result, in the bottom right corner.
@@ -187,6 +261,7 @@ export function createHud(canvas, state) {
       state.effects = state.effects.filter((effect) => now - effect.start < effect.duration);
       if (!state.finished) drawLabels(labels);
       drawChips(seconds);
+      drawSteps();
       drawTray();
       drawBanner(now);
       drawTexts(now);

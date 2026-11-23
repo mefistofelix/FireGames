@@ -65,8 +65,11 @@ A game module exports `start...({canvas, seats, send, onPrompt, onFinish})` and 
 Every question can also be answered on the TV: `onPrompt` gives `tv.js` the waiting question and it shows a menu
 (▲ ▼ OK). The menu opens by itself for teams without a phone (added in the lobby with ▲, removed with ▼, ids
 `remote-N`) and at the first key press for the others, so one remote can be passed around. **Starting a game never
-blocks on missing teams**: with fewer than two, the TV asks "Quante squadre giocano?" (2-4) and adds the missing
-ones as teams without a phone. Nobody needs a phone to play. Back during a game
+blocks on missing teams**: with nobody seated the TV asks "Quante squadre giocano?" (1-4) and adds them as teams
+without a phone; with at least one team the game starts at once, even alone. **A phone can come in while the
+game runs**: it gets the join form (`peek` from an unknown phone is answered with the lobby state), and its
+`hello` seats it in the running game (`game.join`: starting money, from the Banca, last in turn order).
+Nobody needs a phone to play. Back during a game
 asks to press again, then ends the game (`window.onTvBack`, called by `MainActivity.onBackPressed`).
 
 ## Graphics
@@ -96,28 +99,37 @@ How it is made:
 - `src/art/pixelart.py` draws every picture. Each object is a small voxel model written in Python (boxes,
   cylinders, roofs, windows...), drawn with three shaded faces per voxel in 2:1 isometric projection, with a dark
   outline. Run `uv run --no-project --with pillow python -I src/art/pixelart.py` from the repository root: it
-  rewrites `src/web/assets/grandviale/pixel` (about 150 PNG files, 0.6 MB, **committed**: the build does not run
-  the script) and `build/preview/board.png` (the whole board with every hotel complete, to look at while drawing).
+  rewrites `src/web/assets/grandviale/pixel` (about 250 PNG files, 1.2 MB, **committed**: the build does not run
+  the script) and `build/preview/board-<view>.png` (the whole board with every hotel complete, to look at while
+  drawing).
   Pillow is used only by this script on the dev PC, it is not part of the app.
 - Board units are the voxels: x grows to the lower right of the screen, y to the lower left, z up; a voxel at
   (x, y, z) is drawn at pixel ((x - y) * 2, x + y - 2 * z). The avenue (4 corners, 28 spaces every 14 units) and the
   corners of the eight lots (44 x 44 units) are written **twice**, in `pixelart.py` (`CORNERS`, `HOTELS`) and in
   the game (`grandviale-path.js`, `HOTEL_LIST` in `grandviale.js`), in the same order: change them together.
-- Pictures: `ground.png` (table slab, meadow, sea corner, mountains, car park, lake, avenue with the 28 printed
-  spaces); for each hotel one picture per number of pieces built (`hotel-<index>-<pieces>.png`, all with the same
-  frame) and the same with a crane (`...-crane.png`); bank, town hall, lamps, plants; cars (one model per team
-  colour of `config.js`, four directions), guests, entrance canopy, the six faces of the die and the four of the
-  permit die. A hotel model is a function of the number of pieces, written for a lot on the far side of the
+- **Two views.** The board is drawn from two opposite sides (`VIEWS` in the script: quarter turns 0 and 2;
+  four are possible, each costs about 0.6 MB). All the lots are outside the avenue, so from each side the far
+  half of the avenue has the hotels behind it and nothing in front: the world shows the view from which the
+  point the camera looks at is in the far half (`bestView`), and goes round with a short fade when it is not.
+  This is the answer to "the hotels hide the cars"; keep it in mind before putting anything tall inside the
+  avenue. Static pictures carry the view in their name (`-v0`, `-v1`); cars, guests, entrances and dice are
+  drawn once and the world picks the direction that fits the view.
+- Pictures: `ground-v*.png` (table slab, meadow, sea corner, car park, lake, avenue with the 28 printed
+  spaces); for each hotel one picture per number of pieces built (`hotel-<index>-<pieces>-v*.png`, all with the
+  same frame) and the same with a crane (`...-crane-v*.png`); mountains, bank, town hall, lamps, plants; cars
+  (one model per team colour of `config.js`, four directions), guests, entrance canopy, the six faces of the die
+  and the four of the permit die. A hotel model is a function of the number of pieces, written for a lot on the far side of the
   avenue and turned for the other three sides (`turn_left`, `turn_right`, `turn_front`), so that the gate always
   faces the avenue.
-- `board.json` holds the origin of the ground picture, where each static picture goes and its footprint, in
-  **drawing order** (worked out by the script: a thing is drawn before what lies in front of it), and for the
-  moving pictures the offset from the point they stand on.
+- `board.json` holds, for each view, the origin of the ground picture, where each static picture goes and its
+  footprint, in **drawing order** (worked out by the script: a thing is drawn before what lies in front of it),
+  and for the moving pictures the offset from the point they stand on. Pictures are loaded when first needed.
 - `grandviale-world.js` draws the board on a **960x540 canvas scaled up by the page with hard pixels**
   (`image-rendering: pixelated`): ground, the owners' colours (outline of the lots and of the spaces with an
   entrance), then the static pictures in order with cars and guests slipped in at their depth (`placeInOrder`),
-  a pointer in the team's colour over each car (seen even behind a building), night (dark veil and lamp glow) and
-  the die. It only reads the game state; the game moves the camera with `focus(point, zoom)` (scale 2, or 3 from
+  the glow of the lots the waiting question is about (`state.highlight`), small life that never gets in the way
+  (cloud shadows, birds, a plane every 70 s: `drawLife`), a pointer in the team's colour over each car, night
+  (dark veil and lamp glow) and the die. It only reads the game state; the game moves the camera with `focus(point, zoom)` (scale 2, or 3 from
   zoom 2 up) and `overview()` (scale 1).
 - Building: while a piece is new (`builtAt`, 1.3 s) the crane picture of the previous stage is drawn and the new
   one is revealed from the ground up.
@@ -125,13 +137,17 @@ How it is made:
   of the lot (`lotDoor`) and goes in, night falls.
 - `grandviale-hud.js` draws the flat panels on a transparent canvas over the board (1920x1080 space): the names
   of the hotels (with the land price while free, in the owner's colour afterwards; the world gives their places
-  with `labels()`), team chips, banner, dice tray, floating amounts, final ranking. `grandviale-board.js` joins
+  with `labels()`); a panel per team at the top with name, money, the money as banknotes and, under it, a card
+  for each title deed (a mark per piece built, a door per entrance); the four steps of the turn at the bottom
+  left (`state.step`: Lancia, Muovi, Casella, Fine turno); banner, dice tray, floating amounts, final ranking.
+  The remote menu (DOM, `tv.css`) stays on the right during a game. `grandviale-board.js` joins
   world and panels in one animation loop and logs the frame rate every 5 s (`adb logcat -s FireGames`).
 - A hotel is "next to" the three spaces nearest to its lot (`nearestSpaces`): there it is bought and has its
   entrances. Moving a lot or the avenue changes that: check that every hotel still has an Acquisti space.
 - `tv/index.html?demo` starts a game with every hotel fully built.
-- Known limits: the near-side hotels hide part of the avenue behind them and their own gates (the pointer and the
-  coloured outline of the space are the remedy); no lit windows at night; the 3D-era models and Three.js were
+- Known limits: going round is a fade, not a continuous turn (pixel art has no in-between angles); the town
+  hall and the bank, inside the avenue, can still cover a car next to them; no lit windows at night; the dice do
+  not knock anything over; nobody plays on the tennis courts or swims yet; the 3D-era models and Three.js were
   removed in the same commit that brought the pixel art (they are in the history).
 - Not measured on the TV yet (reference: Fire TV Stick 4K Max 2nd gen, PowerVR GE9215, 1.7 GB RAM; the earlier
   2D board ran at about 32 fps, the 3D one at about 30).
@@ -214,6 +230,7 @@ tables of the same site. The complete Italian rulebook of the conquest game for 
 - Passing the Banca (space 0) pays 2.000 €; with three or more teams it stops paying when only two are left.
 - Acquisti space: buy a free lot next to that space, or take over ("esproprio") a lot another team owns there
   with nothing built, at half the land price. No building in the same turn.
+- Every throw is an explicit press of the team (turn, nights, permit): the game never rolls by itself.
 - Cantiere space: choose one own hotel and how many of its next buildings to ask for, then roll the permit die:
   3 faces yes (pay), 1 no, 1 free, 1 double price. A granted permit must be used: at double price the team
   auctions other hotels if it is short.
@@ -252,6 +269,11 @@ with at least one conquest), one movement between two neighbouring own territori
 takes that player's cards (not before the end of the fourth round). The first to reach the secret objective wins.
 The map must show: territories, continents, sea links, armies per territory. Ours will be the real world map
 with our own division into territories and our own names.
+
+What the owner asked for Grand Viale on 2026-11-24 holds for Dominio too: proportions that keep every piece
+readable, a camera that goes to where things happen (and round, if something covers them), a panel per team
+with what it owns, the steps of the turn always on screen, every throw pressed by the team, the places a
+choice is about glowing on the map, teams coming in while the game runs, light surprises in the background.
 
 ## Open decisions (ask the owner)
 

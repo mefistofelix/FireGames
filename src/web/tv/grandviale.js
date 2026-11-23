@@ -72,6 +72,9 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
     hotels: HOTELS.map(() => ({ owner: null, stage: 0, invested: 0, entrances: [], builtAt: 0 })),
     entranceAt: new Map(), // space -> hotel index
     current: 0,
+    step: 0,         // where the turn is: 0 roll, 1 move, 2 the space, 3 end (shown on the TV)
+    highlight: [],   // hotels the waiting question is about: their lots glow on the board
+    mostTeams: seats.length,
     die: { visible: false },
     tray: { number: null, permit: null }, // last result of the two dice, shown in a corner
     banner: { text: "", until: 0 },
@@ -148,6 +151,8 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
   function ask(player, status, buttons) {
     return new Promise((resolve) => {
       prompt = { peerId: player.peerId, player, status, buttons, resolve };
+      const about = buttons.map((button) => button.id.split(":")[1]).filter((number) => number !== undefined);
+      state.highlight = [...new Set(about.map(Number))];
       refreshViews();
     });
   }
@@ -171,8 +176,21 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
     if (!button || button.disabled) return;
     const resolve = prompt.resolve;
     prompt = null;
+    state.highlight = [];
     refreshViews();
     resolve(id);
+  }
+
+  // A team that arrives while the game is running takes a seat: it starts from the Banca with the starting
+  // money and plays after the others.
+  function join(seat) {
+    if (over || state.players.some((player) => player.peerId === seat.peerId)) return;
+    seats.push(seat);
+    state.players.push({ ...seat, cash: START_CASH, shownCash: START_CASH, space: 0, move: null, bankrupt: false });
+    state.mostTeams = Math.max(state.mostTeams, alive().length);
+    sound.chime();
+    banner(seat.name + " entra in partita!", seat.hex);
+    refreshViews();
   }
 
   // The camera stays with the team in turn: its car and the lots around it.
@@ -223,7 +241,7 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
       if (next === MUNICIPIO_SPACE) passedMunicipio = true;
       if (next !== BANK_SPACE) continue;
       // with three or four teams, the bank stops paying once only two are left
-      const bankPays = seats.length === 2 || alive().length > 2;
+      const bankPays = state.mostTeams < 3 || alive().length > 2;
       if (!bankPays) continue;
       credit(player, SALARY);
       sound.cash();
@@ -395,6 +413,10 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
     const cost = stagesCost(index, count);
     const name = HOTELS[index].name;
     banner(player.name + " chiede il permesso per " + name, player.hex);
+    const what = (count === 1 ? "un edificio" : count + " edifici") + " a " + name + " (" + euro(cost) + ")";
+    await ask(player, "Permesso per " + what + ": verde si paga, rosso niente, GRATIS non si paga, ×2 costa il doppio.",
+      [{ id: "roll", label: "Lancia il dado dei permessi", kind: "primary" }]);
+    if (over) return;
     const outcome = await roll("permit", PERMIT_FACES[Math.floor(Math.random() * PERMIT_FACES.length)], player.hex);
     board.focus(lotCenter(index), 1.9);
     if (outcome === "no") {
@@ -549,12 +571,15 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
     let again = true;
     while (again && !over && !player.bankrupt) {
       showPlayer(player);
+      state.step = 0;
       note = "Tocca a " + player.name + ".";
       banner("Tocca a " + player.name, player.hex);
       await ask(player, "Tocca a voi!", [{ id: "roll", label: "Lancia il dado", kind: "primary" }]);
       if (over) return;
       const steps = await rollNumber(player.hex);
+      state.step = 1;
       const entranceRight = await moveCar(player, steps);
+      state.step = 2;
       const type = SPACES[player.space];
       const hotelIndex = state.entranceAt.get(player.space);
       if (hotelIndex !== undefined && state.hotels[hotelIndex].owner !== player) {
@@ -612,5 +637,5 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
   }
   banner("Benvenuti a Grand Viale!", "#14142b");
   run();
-  return { onAct, viewFor, end: finish };
+  return { onAct, viewFor, join, end: finish };
 }

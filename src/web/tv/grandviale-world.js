@@ -1,6 +1,8 @@
 // Grand Viale: the board, drawn as isometric pixel art on a small canvas (960x540) that the page scales up
 // with hard pixels. Every picture comes from src/web/assets/grandviale/pixel, drawn by src/art/pixelart.py
 // together with board.json, which says where each picture goes and in which order.
+// The board is drawn from two opposite sides ("views"): the camera goes round to the side from which the
+// place it looks at is not hidden by the hotels.
 // This module only reads the game state each frame; the game moves the camera with focus() and overview().
 
 import { COLORS } from "../shared/config.js";
@@ -9,9 +11,12 @@ import { lotDoor, ringDirection, ringPoint } from "./grandviale-path.js";
 const BASE = "../assets/grandviale/pixel/";
 const VIEW_WIDTH = 960;
 const VIEW_HEIGHT = 540;
-const VIEW_CENTER_Y = 292;   // a little below the middle: the team chips cover the top of the screen
+const VIEW_CENTER_Y = 292;   // a little below the middle: the team panels cover the top of the screen
 const BUILD_MS = 1300;       // how long a new piece takes to rise (the game waits as long)
+const TURN_MS = 260;         // half of the time the camera takes to go round to the other side
+const BOARD_CENTER = { x: 113, y: 85 };
 const PERMIT_FACES = ["si", "no", "gratis", "doppio"];
+const DIRECTIONS = ["xp", "yp", "xn", "yn"]; // each quarter turn of the board moves a direction to the next one
 
 export function createWorld(canvas, state, hotels) {
   canvas.width = VIEW_WIDTH;
@@ -19,11 +24,13 @@ export function createWorld(canvas, state, hotels) {
   canvas.style.imageRendering = "pixelated";
   const context = canvas.getContext("2d");
   const images = new Map();
-  let board = null; // board.json, once loaded
+  let board = null;   // board.json, once loaded
+  let view = null;    // the side the board is seen from: one of board.views
+  let turning = null; // {to, start}: the camera is going round to another view
   let running = true;
   let night = 0;
   const camera = { x: 0, y: 0, scale: 1 };
-  let target = null; // {point, scale}: what the camera looks at; null: the whole board
+  let target = null;  // {point, scale}: what the camera looks at; null: the whole board
 
   function image(name) {
     if (!images.has(name)) {
@@ -38,27 +45,41 @@ export function createWorld(canvas, state, hotels) {
     return picture.complete && picture.naturalWidth > 0;
   }
 
+  function suffix() {
+    return "-v" + board.views.indexOf(view);
+  }
+
+  // Asks for the pictures of a view before they are needed, so that nothing pops in.
+  function preload(which) {
+    const tail = "-v" + board.views.indexOf(which);
+    image("ground" + tail);
+    which.statics.forEach((entry) => entry.f && image(entry.f));
+    state.hotels.forEach((status, index) => image("hotel-" + index + "-" + status.stage + tail));
+  }
+
   fetch(BASE + "board.json").then((response) => response.json()).then((data) => {
     if (!running) return;
     board = data;
-    camera.x = data.size[0] / 2;
-    camera.y = data.size[1] / 2 - 24;
-    // everything is asked for at once, so that nothing pops in during the game
-    image("ground");
-    data.statics.forEach((entry) => entry.f && image(entry.f));
-    data.hotels.forEach((hotel, index) => {
-      for (let stage = 0; stage <= hotel.pieces; stage++) {
-        image("hotel-" + index + "-" + stage);
-        image("hotel-" + index + "-" + stage + "-crane");
-      }
-    });
+    view = data.views[0];
+    camera.x = view.size[0] / 2;
+    camera.y = view.size[1] / 2 - 24;
+    data.views.forEach(preload);
     Object.keys(data.sprites).forEach(image);
   });
 
-  // Board point (z above the road by default) -> pixel of the board picture.
-  function project(x, y, z) {
+  // A point of the board as the current view sees it (the board turned by quarter turns).
+  function turned(x, y, which) {
+    let point = { x, y };
+    for (let turn = 0; turn < (which || view).turns; turn++) point = { x: -point.y, y: point.x };
+    return point;
+  }
+
+  // Board point (z above the road by default) -> pixel of the view's picture.
+  function project(x, y, z, which) {
+    const seen = which || view;
+    const point = turned(x, y, seen);
     const height = z === undefined ? board.ground + 1 : z;
-    return { x: (x - y) * 2 - board.origin[0], y: x + y - 2 * height - board.origin[1] };
+    return { x: (point.x - point.y) * 2 - seen.origin[0], y: point.x + point.y - 2 * height - seen.origin[1] };
   }
 
   function drawSprite(name, x, y, z) {
@@ -107,20 +128,25 @@ export function createWorld(canvas, state, hotels) {
   // A thing standing on a point goes in front of what lies behind it along x or along y: it is drawn just
   // before the first picture of the list that hides it.
   function placeInOrder(x, y) {
-    const statics = board.statics;
+    const point = turned(x, y);
+    const statics = view.statics;
     for (let index = 0; index < statics.length; index++) {
       const [x0, y0, x1, y1] = statics[index].r;
-      const inside = x >= x0 && y >= y0 && x < x1 && y < y1;
-      if (!inside && x < x1 && y < y1) return index;
+      const inside = point.x >= x0 && point.y >= y0 && point.x < x1 && point.y < y1;
+      if (!inside && point.x < x1 && point.y < y1) return index;
     }
     return statics.length;
   }
 
-  function drawOutline(x0, y0, x1, y1, colour, width) {
+  function outline(x0, y0, x1, y1) {
     const corners = [project(x0, y0), project(x1, y0), project(x1, y1), project(x0, y1)];
     context.beginPath();
     corners.forEach((corner, index) => (index ? context.lineTo(corner.x + 2, corner.y + 1) : context.moveTo(corner.x + 2, corner.y + 1)));
     context.closePath();
+  }
+
+  function drawOutline(x0, y0, x1, y1, colour, width) {
+    outline(x0, y0, x1, y1);
     context.strokeStyle = colour;
     context.lineWidth = width;
     context.stroke();
@@ -129,28 +155,64 @@ export function createWorld(canvas, state, hotels) {
   function drawHotel(index, entry, now) {
     const status = state.hotels[index];
     const rising = status.stage > 0 && now - status.builtAt < BUILD_MS;
-    if (!rising) {
-      const picture = image("hotel-" + index + "-" + status.stage);
-      if (ready(picture)) context.drawImage(picture, entry.x, entry.y);
-    } else {
+    const plain = image("hotel-" + index + "-" + status.stage + suffix());
+    const before = rising ? image("hotel-" + index + "-" + (status.stage - 1) + "-crane" + suffix()) : null;
+    const after = rising ? image("hotel-" + index + "-" + status.stage + "-crane" + suffix()) : null;
+    if (rising && ready(before) && ready(after)) {
       // a crane stands on the lot and the new piece comes up from the ground
-      const before = image("hotel-" + index + "-" + (status.stage - 1) + "-crane");
-      const after = image("hotel-" + index + "-" + status.stage + "-crane");
-      if (ready(before)) context.drawImage(before, entry.x, entry.y);
-      if (ready(after)) {
-        const grown = Math.ceil(after.naturalHeight * (now - status.builtAt) / BUILD_MS);
-        const from = after.naturalHeight - grown;
-        context.drawImage(after, 0, from, after.naturalWidth, grown, entry.x, entry.y + from, after.naturalWidth, grown);
-      }
+      context.drawImage(before, entry.x, entry.y);
+      const grown = Math.ceil(after.naturalHeight * (now - status.builtAt) / BUILD_MS);
+      const from = after.naturalHeight - grown;
+      context.drawImage(after, 0, from, after.naturalWidth, grown, entry.x, entry.y + from, after.naturalWidth, grown);
+    } else if (ready(plain)) {
+      context.drawImage(plain, entry.x, entry.y);
     }
     for (const space of status.entrances) {
       const door = lotDoor(hotels[index].lot, space);
-      drawSprite("entrance-" + door.along, door.x, door.y, 0);
+      const along = view.turns % 2 ? (door.along === "x" ? "y" : "x") : door.along;
+      drawSprite("entrance-" + along, door.x, door.y, 0);
+    }
+  }
+
+  // Small surprises that never get in the way: the shadows of the clouds, birds, now and then a plane.
+  function drawLife(now) {
+    const width = view.size[0];
+    const height = view.size[1];
+    context.fillStyle = "rgba(20, 30, 60, 0.10)";
+    for (let cloud = 0; cloud < 3; cloud++) {
+      const x = ((now / (95 + cloud * 30) + cloud * 420) % (width + 400)) - 200;
+      const y = 90 + cloud * 130 + Math.sin(now / 9000 + cloud) * 20;
+      context.beginPath();
+      context.ellipse(x, y, 90 + cloud * 20, 34 + cloud * 6, 0, 0, Math.PI * 2);
+      context.fill();
+    }
+    for (let bird = 0; bird < 5; bird++) {
+      const lap = now / 28 + bird * 37;
+      const x = (lap % (width + 300)) - 150 + (bird % 3) * 9;
+      const y = 60 + ((Math.floor(lap / (width + 300)) * 97 + bird * 13) % (height - 160)) + Math.sin(now / 700 + bird) * 6 - x * 0.12;
+      const wing = Math.sin(now / 110 + bird) > 0 ? 1 : 0;
+      context.fillStyle = "#2b2d42";
+      context.fillRect(Math.round(x), Math.round(y), 2, 1);
+      context.fillRect(Math.round(x) - 2, Math.round(y) - wing, 2, 1);
+      context.fillRect(Math.round(x) + 2, Math.round(y) - wing, 2, 1);
+    }
+    const flight = (now % 70000) / 9000; // a plane crosses the board every 70 seconds
+    if (flight < 1) {
+      const x = -60 + flight * (width + 120);
+      const y = height * 0.75 - flight * height * 0.6;
+      context.fillStyle = "rgba(20, 30, 60, 0.18)";
+      context.fillRect(Math.round(x) - 8, Math.round(y) + 70, 22, 5);
+      context.fillStyle = "#f8f9fa";
+      context.fillRect(Math.round(x) - 8, Math.round(y), 22, 4);
+      context.fillRect(Math.round(x), Math.round(y) - 7, 6, 18);
+      context.fillRect(Math.round(x) - 9, Math.round(y) - 4, 3, 5);
+      context.fillStyle = "#e63946";
+      context.fillRect(Math.round(x) + 12, Math.round(y), 2, 4);
     }
   }
 
   function drawScene(now) {
-    const ground = image("ground");
+    const ground = image("ground" + suffix());
     if (ready(ground)) context.drawImage(ground, 0, 0);
 
     // what the teams own: the edge of their lots and the spaces with their entrances, in their colour
@@ -171,8 +233,9 @@ export function createWorld(canvas, state, hotels) {
       if (player.bankrupt) return;
       const pose = carPose(player, now);
       const colour = colourIndex(player);
+      const direction = DIRECTIONS[(DIRECTIONS.indexOf(pose.direction) + view.turns) % 4];
       cars.push({ player, pose });
-      moving.push({ at: placeInOrder(pose.x, pose.y), depth: pose.x + pose.y, name: "car-" + colour + "-" + pose.direction, x: pose.x, y: pose.y, z: pose.z });
+      moving.push({ at: placeInOrder(pose.x, pose.y), depth: pose.x + pose.y, name: "car-" + colour + "-" + direction, x: pose.x, y: pose.y, z: pose.z });
       if (!pose.person) return;
       const person = pose.person;
       const onLot = hotels.some((hotel) => person.x >= hotel.lot.x && person.x < hotel.lot.x + hotel.lot.width &&
@@ -193,7 +256,7 @@ export function createWorld(canvas, state, hotels) {
     }
 
     let next = 0;
-    board.statics.forEach((entry, index) => {
+    view.statics.forEach((entry, index) => {
       while (next < moving.length && moving[next].at <= index) {
         const thing = moving[next++];
         drawSprite(thing.name, thing.x, thing.y, thing.z);
@@ -206,7 +269,21 @@ export function createWorld(canvas, state, hotels) {
       drawSprite(thing.name, thing.x, thing.y, thing.z);
     }
 
-    // a pointer in the team's colour over each car: it is seen even when a building hides the car
+    // the lots the waiting question is about glow, so that everybody sees what is being chosen
+    const pulse = 0.5 + Math.sin(now / 220) * 0.5;
+    for (const index of state.highlight || []) {
+      const lot = hotels[index].lot;
+      outline(lot.x, lot.y, lot.x + lot.width, lot.y + lot.height);
+      context.fillStyle = "rgba(255, 255, 255, " + (0.1 + pulse * 0.22) + ")";
+      context.fill();
+      context.strokeStyle = "rgba(255, 240, 150, " + (0.6 + pulse * 0.4) + ")";
+      context.lineWidth = 3;
+      context.stroke();
+    }
+
+    drawLife(now);
+
+    // a pointer in the team's colour over each car: it is seen even when something hides the car
     for (const car of cars) {
       const top = project(car.pose.x, car.pose.y, car.pose.z + 9);
       const bob = Math.round(Math.sin(now / 300 + car.pose.x) * 1.5);
@@ -225,7 +302,7 @@ export function createWorld(canvas, state, hotels) {
     context.fillStyle = "rgba(10, 14, 52, " + (night * 0.58) + ")";
     context.fillRect(0, 0, VIEW_WIDTH, VIEW_HEIGHT);
     context.globalCompositeOperation = "lighter";
-    for (const [x, y] of board.lamps) {
+    for (const [x, y] of view.lamps) {
       const centre = toView(x, y);
       const radius = 26 * camera.scale;
       const glow = context.createRadialGradient(centre.x, centre.y, 0, centre.x, centre.y, radius);
@@ -260,12 +337,29 @@ export function createWorld(canvas, state, hotels) {
       picture.naturalWidth * size, picture.naturalHeight * size);
   }
 
-  // Pixel of the board picture -> pixel of the canvas.
+  // Pixel of the view's picture -> pixel of the canvas.
   function toView(x, y) {
     return {
       x: Math.round(VIEW_WIDTH / 2 - camera.x * camera.scale) + x * camera.scale,
       y: Math.round(VIEW_CENTER_Y - camera.y * camera.scale) + y * camera.scale,
     };
+  }
+
+  // From which side a point is best seen: from the side where it lies in the far half of the board,
+  // with the hotels behind it. A point seen well enough from the current side does not make the camera turn.
+  function bestView(point) {
+    const side = (which) => {
+      const seen = turned(point.x - BOARD_CENTER.x, point.y - BOARD_CENTER.y, which);
+      return seen.x / BOARD_CENTER.x + seen.y / BOARD_CENTER.y; // negative: far half
+    };
+    if (side(view) < 0.2) return view;
+    return board.views.reduce((best, which) => (side(which) < side(best) ? which : best), view);
+  }
+
+  function goalFor(which) {
+    if (!target) return { x: which.size[0] / 2, y: which.size[1] / 2 - 24, scale: 1 };
+    const centre = project(target.point.x, target.point.y, undefined, which);
+    return { x: centre.x, y: centre.y - 14, scale: target.scale };
   }
 
   function draw(now, seconds) {
@@ -278,12 +372,27 @@ export function createWorld(canvas, state, hotels) {
     for (let y = 0; y < VIEW_HEIGHT; y += 36) context.fillRect(0, y, VIEW_WIDTH, 2);
     if (!board) return;
 
-    // the camera moves at an unhurried pace towards where the game points it
-    let goal = { x: board.size[0] / 2, y: board.size[1] / 2 - 24, scale: 1 };
-    if (target) {
-      const centre = project(target.point.x, target.point.y);
-      goal = { x: centre.x, y: centre.y - 14, scale: target.scale };
+    // going round to the other side: the picture fades out, the view changes, the picture fades in
+    if (!turning && target) {
+      const wanted = bestView(target.point);
+      if (wanted !== view) {
+        turning = { to: wanted, start: now };
+        preload(wanted);
+      }
     }
+    let veil = 0;
+    if (turning) {
+      const t = (now - turning.start) / TURN_MS;
+      if (t >= 1 && view !== turning.to) {
+        view = turning.to;
+        Object.assign(camera, goalFor(view));
+      }
+      veil = t < 1 ? t : 2 - t;
+      if (t >= 2) turning = null;
+    }
+
+    // the camera moves at an unhurried pace towards where the game points it
+    const goal = goalFor(view);
     const ease = 1 - Math.exp(-seconds * 2.6);
     camera.x += (goal.x - camera.x) * ease;
     camera.y += (goal.y - camera.y) * ease;
@@ -296,18 +405,22 @@ export function createWorld(canvas, state, hotels) {
     drawScene(now);
     context.setTransform(1, 0, 0, 1, 0, 0);
     drawNight();
+    if (veil > 0) {
+      context.fillStyle = "rgba(90, 61, 43, " + Math.max(0, Math.min(1, veil)) + ")";
+      context.fillRect(0, 0, VIEW_WIDTH, VIEW_HEIGHT);
+    }
     drawDie(now);
   }
 
-  // Names over the lots and the cars, for the panels to write (in their 1920x1080 space): the letters
-  // would be unreadable at the size of the board's pixels.
+  // Names over the lots, for the panels to write (in their 1920x1080 space): the letters would be
+  // unreadable at the size of the board's pixels.
   function labels() {
-    if (!board) return [];
+    if (!board || turning) return [];
     const unit = 1920 / VIEW_WIDTH;
     const list = [];
     state.hotels.forEach((status, index) => {
-      const entry = board.hotels[index];
-      const picture = image("hotel-" + index + "-" + status.stage);
+      const entry = view.hotels[index];
+      const picture = image("hotel-" + index + "-" + status.stage + suffix());
       if (!ready(picture)) return;
       const place = toView(entry.x + picture.naturalWidth / 2, entry.y + entry.tops[status.stage] - 5);
       list.push({ text: hotels[index].name, hex: status.owner ? status.owner.hex : null, price: status.owner ? null : hotels[index].land, x: place.x * unit, y: place.y * unit });

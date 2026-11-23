@@ -15,7 +15,7 @@ export function spacePoint(index) {
 // worldCanvas shows the board, hudCanvas lies over it. state is the game state (see grandviale.js).
 export function createBoard(worldCanvas, hudCanvas, state, hotels) {
   const world = createWorld(worldCanvas, state, hotels);
-  const hud = createHud(hudCanvas, state);
+  const hud = createHud(hudCanvas, state, hotels);
   let running = true;
   let previous = performance.now();
   let frames = 0;
