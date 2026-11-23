@@ -7,12 +7,13 @@
 
 import { euro } from "../shared/config.js";
 import * as sound from "../shared/sound.js";
-import { chipCenter, createBoard, nearestSpaces, spacePoint } from "./grandviale-board.js";
+import { chipCenter, createBoard, lotDoor, nearestSpaces, spacePoint } from "./grandviale-board.js";
 
 const START_CASH = 12000;
 const SALARY = 2000;
 const HOP_MS = 260;
 const AUCTION_STEP = 500;
+const HOTEL_REACH = 3; // a lot is as long as three spaces of the avenue
 const BANK_SPACE = 0;
 const MUNICIPIO_SPACE = 14;
 const PERMIT_FACES = ["si", "si", "si", "no", "gratis", "doppio"];
@@ -33,39 +34,29 @@ const SPACE_TEXT = {
 };
 
 // land: price of the lot. stages: cost of each piece in building order; the last one is the leisure area,
-// the others are buildings. rates: price of one night with that many pieces. center/size: the lot on the board.
-// reach: how many of the nearest spaces the hotel is "next to" (where it can be bought and where its entrances go).
-// style, tall (height of its buildings) and models (one 3D model per building, null: made of plain solids)
-// say how the board draws it.
+// the others are buildings. rates: price of one night with that many pieces. corner: where the lot is on the
+// board (all lots are LOT wide); the pictures are drawn by src/art/pixelart.py, which lists the hotels in this
+// same order with the same corners and the same number of pieces.
+// A hotel is "next to" the HOTEL_REACH spaces nearest to its lot: there it can be bought and has its entrances.
+// Number of buildings, land, building and entrance prices follow the eight title deeds of the classic rules,
+// from the one-building guest house to the big ones; names, places and night rates are ours.
+const LOT = 44;
 const HOTEL_LIST = [
-  { name: "Locanda del Faro", accent: "#e76f51", style: "lighthouse", models: [null, "city/building-c", "town/building-type-c"], tall: 110, land: 1000, stages: [1200, 1000, 800, 700],
-    entrance: 150, rates: [100, 200, 350, 500], center: [500, 952], size: [310, 124], reach: 3 },
-  { name: "Pensione Girasole", accent: "#e9c46a", style: "flat", models: ["city/building-a", "city/building-b", "city/building-d"], tall: 105, land: 1200, stages: [1500, 1200, 1000, 800],
-    entrance: 150, rates: [120, 250, 400, 550], center: [1400, 952], size: [310, 124], reach: 3 },
-  { name: "Villa Ortensia", accent: "#b388eb", style: "dome", models: ["city/building-e", "city/building-f", "city/building-g"], tall: 120, land: 1800, stages: [2200, 1800, 1500, 1200],
-    entrance: 200, rates: [200, 400, 650, 850], center: [915, 245], size: [230, 150], reach: 3 },
-  { name: "Albergo Tre Pini", accent: "#52b788", style: "pitched", models: ["town/building-type-a", "town/building-type-b", "town/building-type-d", "town/building-type-e"], tall: 125, land: 2000, stages: [2500, 2000, 1800, 1500, 1500],
-    entrance: 200, rates: [200, 400, 600, 900, 1150], center: [1715, 165], size: [280, 140], reach: 3 },
-  { name: "Rifugio Stella Alpina", accent: "#a47148", style: "chalet", models: ["town/building-type-f", "town/building-type-n", "town/building-type-t"], tall: 115, land: 2500, stages: [3000, 2500, 2000, 1800],
-    entrance: 250, rates: [300, 600, 950, 1250], center: [200, 180], size: [260, 140], reach: 3 },
-  { name: "Palazzo Belvedere", accent: "#f4a261", style: "palace", models: ["city/building-h", "city/building-i", "city/building-k", "city/building-l"], tall: 135, land: 3000, stages: [3500, 3000, 2500, 2500, 2000],
-    entrance: 300, rates: [350, 650, 1000, 1400, 1750], center: [935, 655], size: [270, 140], reach: 3 },
-  { name: "Grand Hotel Aurora", accent: "#ff8fab", style: "dome", models: ["city/building-m", "city/building-j", "city/building-n", "city/building-skyscraper-e"], tall: 175, land: 3500, stages: [4000, 3500, 3000, 3000, 2500],
-    entrance: 300, rates: [400, 800, 1200, 1700, 2100], center: [520, 560], size: [300, 230], reach: 4 },
-  { name: "Torre Zaffiro", accent: "#4895ef", style: "tower", models: ["city/building-skyscraper-a", "city/building-skyscraper-b", "city/building-skyscraper-c", "city/building-skyscraper-d"], tall: 270, land: 4000, stages: [5000, 4000, 4000, 3500, 3000],
-    entrance: 350, rates: [500, 950, 1500, 2200, 2700], center: [1330, 560], size: [320, 240], reach: 4 },
+  { name: "Pensione Girasole", accent: "#e9c46a", land: 500, stages: [1800, 250], entrance: 100, rates: [100, 150], corner: [91, 126] },
+  { name: "Locanda del Faro", accent: "#e76f51", land: 1000, stages: [2200, 1400, 1400, 500], entrance: 100, rates: [100, 200, 300, 400], corner: [44, 126] },
+  { name: "Albergo Tre Pini", accent: "#52b788", land: 1500, stages: [2400, 1000, 500, 1000], entrance: 100, rates: [100, 250, 350, 450], corner: [138, 126] },
+  { name: "Rifugio Stella Alpina", accent: "#a47148", land: 2000, stages: [2600, 1200, 1200, 2000], entrance: 150, rates: [150, 300, 400, 550], corner: [44, 0] },
+  { name: "Villa Ortensia", accent: "#b388eb", land: 2500, stages: [3600, 2600, 1800, 1800, 3000], entrance: 200, rates: [150, 350, 500, 650, 800], corner: [182, 63] },
+  { name: "Grand Hotel Aurora", accent: "#ff8fab", land: 2500, stages: [3500, 2500, 2500, 1750, 1750, 2500], entrance: 200, rates: [150, 350, 500, 650, 800, 1000], corner: [0, 63] },
+  { name: "Palazzo Belvedere", accent: "#f4a261", land: 3000, stages: [3300, 2200, 1800, 1800, 1800, 4000], entrance: 250, rates: [200, 350, 550, 750, 950, 1100], corner: [138, 0] },
+  { name: "Torre Zaffiro", accent: "#4895ef", land: 3500, stages: [5000, 3000, 2250, 1750, 5000], entrance: 250, rates: [200, 400, 600, 850, 1050], corner: [91, 0] },
 ];
 
 const HOTELS = HOTEL_LIST.map((hotel) => ({
   ...hotel,
   buildings: hotel.stages.length - 1,
-  lot: {
-    x: hotel.center[0] - hotel.size[0] / 2,
-    y: hotel.center[1] - hotel.size[1] / 2,
-    width: hotel.size[0],
-    height: hotel.size[1],
-  },
-  spaces: nearestSpaces({ x: hotel.center[0], y: hotel.center[1] }, hotel.reach),
+  lot: { x: hotel.corner[0], y: hotel.corner[1], width: LOT, height: LOT },
+  spaces: nearestSpaces({ x: hotel.corner[0] + LOT / 2, y: hotel.corner[1] + LOT / 2 }, HOTEL_REACH),
 }));
 
 function wait(milliseconds) {
@@ -73,7 +64,7 @@ function wait(milliseconds) {
 }
 
 // seats: [{peerId, name, hex}] in turn order; the first one may end the game early.
-// canvas takes the flat panels, worldCanvas (under it) the 3D scene. send(peerId, body) delivers a view to a phone. onPrompt(prompt) tells the TV which question is waiting
+// canvas takes the flat panels, worldCanvas (under it) the board. send(peerId, body) delivers a view to a phone. onPrompt(prompt) tells the TV which question is waiting
 // ({player, status, buttons} or null) so the remote can answer it. onFinish() is called after the final ranking.
 export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, onFinish }) {
   const state = {
@@ -87,7 +78,7 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
     effects: [], // amounts floating on the panels: {text, hex, x, y, start, duration}
     finished: null,
   };
-  const board = createBoard(worldCanvas, canvas, state, HOTELS, SPACES);
+  const board = createBoard(worldCanvas, canvas, state, HOTELS);
   let prompt = null; // {peerId, player, status, buttons, resolve}: the question waiting on a phone
   let note = "";
   let over = false;
@@ -252,11 +243,11 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
     return { x: lot.x + lot.width / 2, y: lot.y + lot.height / 2 };
   }
 
-  // A whole hotel is sold to the other teams, starting from the price of its land. The teams bid in turn
-  // until one is left; with no bid the bank pays the starting price and the hotel is cleared.
+  // A whole hotel is sold to the other teams: no starting price, the teams bid in turn until one is left.
+  // With no bid the hotel is pulled down and its land is free again; the seller gets nothing.
   async function auction(seller, index) {
     const name = HOTELS[index].name;
-    let price = HOTELS[index].land;
+    let price = 0;
     let leader = null;
     let bidders = alive().filter((player) => player !== seller);
     board.focus(lotCenter(index), 1.7);
@@ -265,11 +256,11 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
     while (bidders.length > 0 && !(bidders.length === 1 && bidders[0] === leader)) {
       for (const bidder of bidders.slice()) {
         if (bidder === leader) continue;
-        const offer = leader ? price + AUCTION_STEP : price;
+        const offer = price + AUCTION_STEP;
         let answer = "pass";
         if (bidder.cash >= offer) {
           const status = "Asta: " + name + " (" + describe(index) + "). " +
-            (leader ? leader.name + " offre " + euro(price) + "." : "Base d'asta " + euro(price) + ".");
+            (leader ? leader.name + " offre " + euro(price) + "." : "Nessuna offerta finora.");
           answer = await ask(bidder, status, [
             { id: "bid", label: "Offri", sub: euro(offer), kind: "primary" },
             { id: "pass", label: "Passo" },
@@ -287,10 +278,9 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
       }
     }
     if (!leader) {
-      banner("Nessuna offerta: " + name + " torna alla banca", "#14142b");
-      const refund = HOTELS[index].land;
+      banner("Nessuna offerta: " + name + " viene demolito", "#14142b");
       release(index);
-      credit(seller, refund);
+      refreshViews();
       await wait(2000);
       return;
     }
@@ -303,9 +293,10 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
   }
 
   // A team that cannot pay puts its hotels up for auction, cheapest first, until the amount is covered.
-  async function liquidate(player, amount) {
+  // keep: a hotel that is not sold (the one the money is needed for).
+  async function liquidate(player, amount, keep) {
     while (player.cash < amount && !over) {
-      const owned = ownedBy(player).sort((a, b) => state.hotels[a].invested - state.hotels[b].invested);
+      const owned = ownedBy(player).filter((index) => index !== keep).sort((a, b) => state.hotels[a].invested - state.hotels[b].invested);
       if (!owned.length) return;
       await auction(player, owned[0]);
     }
@@ -338,8 +329,7 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
   async function payStay(player, index) {
     const hotel = state.hotels[index];
     const owner = hotel.owner;
-    const lot = HOTELS[index].lot;
-    const door = { x: lot.x + lot.width / 2, y: lot.y + lot.height * 0.72 };
+    const door = lotDoor(HOTELS[index].lot, player.space);
     board.focus(lotCenter(index), 2.1);
     banner(player.name + " è ospite: " + HOTELS[index].name, owner.hex);
     player.door = door;
@@ -382,8 +372,7 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
     return HOTELS[index].stages.slice(from, from + count).reduce((sum, cost) => sum + cost, 0);
   }
 
-  // How many pieces to ask the permit for: buildings may be put up several at a time, the leisure area
-  // only alone and only when every building is there.
+  // How many buildings to ask the permit for: several may be put up at a time, in order.
   async function chooseAmount(player, index) {
     const hotel = state.hotels[index];
     const missingBuildings = HOTELS[index].buildings - hotel.stage;
@@ -420,18 +409,17 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
       return;
     }
     if (outcome === "doppio") {
+      // a granted permit must be used: a team short of money has to auction other hotels to pay
+      banner("Permesso a prezzo DOPPIO: " + euro(cost * 2), "#f77f00");
+      await wait(1800);
+      await liquidate(player, cost * 2, index);
+      if (over) return;
       if (player.cash < cost * 2) {
         sound.buzzer();
-        banner("Costa il doppio: troppo per " + player.name, "#f77f00");
+        banner(player.name + " non riesce a pagare: niente lavori", "#f77f00");
         await wait(1800);
         return;
       }
-      banner("Permesso a prezzo DOPPIO", "#f77f00");
-      const answer = await ask(player, "Il permesso costa il doppio. Accettate?", [
-        { id: "accept", label: "Paga", sub: euro(cost * 2), kind: "primary" },
-        { id: "decline", label: "Rinuncia" },
-      ]);
-      if (answer !== "accept") return;
       banner(name + " cresce!", player.hex);
       await construct(player, index, count, cost * 2);
       return;
@@ -458,6 +446,8 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
     const buttons = [];
     const mine = ownedBy(player);
     const canGrow = mine.filter((index) => state.hotels[index].stage < HOTELS[index].stages.length);
+    const canBuild = mine.filter((index) => state.hotels[index].stage < HOTELS[index].buildings);
+    const canEquip = mine.filter((index) => state.hotels[index].stage === HOTELS[index].buildings);
     const canOpen = mine.filter((index) => state.hotels[index].stage > 0 && freeEntranceSpace(index) !== undefined);
     if (!turn.spaceUsed && type === "buy") {
       HOTELS.forEach((hotel, index) => {
@@ -472,12 +462,15 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
       });
     }
     if (!turn.spaceUsed && type === "build") {
-      for (const index of canGrow) {
-        const stage = state.hotels[index].stage;
-        const cost = HOTELS[index].stages[stage];
-        const label = stage === HOTELS[index].buildings ? "Area relax a " : "Costruisci a ";
-        buttons.push({ id: "build:" + index, label: label + HOTELS[index].name, sub: "da " + euro(cost), kind: "primary", disabled: player.cash < cost });
+      for (const index of canBuild) {
+        const cost = HOTELS[index].stages[state.hotels[index].stage];
+        buttons.push({ id: "build:" + index, label: "Costruisci a " + HOTELS[index].name, sub: "da " + euro(cost), kind: "primary", disabled: player.cash < cost });
       }
+    }
+    // the leisure area of a finished hotel needs no permit and no special space: it is just paid for
+    for (const index of canEquip) {
+      const cost = HOTELS[index].stages[HOTELS[index].buildings];
+      buttons.push({ id: "relax:" + index, label: "Area relax a " + HOTELS[index].name, sub: euro(cost), disabled: player.cash < cost });
     }
     if (!turn.spaceUsed && type === "gift") {
       for (const index of canGrow) {
@@ -510,7 +503,7 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
       if (over || id === "end") return;
       const [verb, number] = id.split(":");
       const index = Number(number);
-      board.focus(lotCenter(index), verb === "build" || verb === "gift" ? 1.9 : 1.7);
+      board.focus(lotCenter(index), 1.7);
       if (verb === "buy" || verb === "take") {
         const previous = state.hotels[index].owner;
         const price = verb === "buy" ? HOTELS[index].land : HOTELS[index].land / 2;
@@ -526,6 +519,10 @@ export function startGrandViale({ canvas, worldCanvas, seats, send, onPrompt, on
       if (verb === "build") {
         await build(player, index);
         turn.spaceUsed = true;
+      }
+      if (verb === "relax") {
+        banner("Area relax per " + HOTELS[index].name + "!", player.hex);
+        await construct(player, index, 1, HOTELS[index].stages[HOTELS[index].buildings]);
       }
       if (verb === "gift") {
         banner("Regalo per " + HOTELS[index].name + "!", "#ff6fb5");

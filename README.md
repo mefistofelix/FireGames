@@ -47,13 +47,18 @@ I dadi sono due: quello **numerato** (per muoversi e per le notti) e quello dei 
 - **Acquisti** 💰: si compra il terreno libero accanto, oppure si **espropria** a metà prezzo un terreno altrui su
   cui non è stato costruito nulla.
 - **Cantiere** 🏗️: si sceglie un proprio hotel e quanti edifici costruire, poi si lancia il dado dei permessi:
-  sì, no, gratis oppure prezzo doppio. Dopo gli edifici si può aggiungere l'**area relax**, che alza la tariffa.
+  sì, no, gratis oppure prezzo doppio (e il permesso concesso va usato, anche vendendo altro all'asta).
+- **Area relax**: quando un hotel ha tutti i suoi edifici, si compra in qualsiasi proprio turno, senza permesso.
+  Alza la tariffa.
 - **Regalo** 🎁: un pezzo di hotel gratis, senza permesso.
 - **Municipio** 🏛️: passandoci si può aprire un **ingresso** per ogni proprio hotel. Le caselle **Ingresso** 🚪
   ne regalano uno.
 - Chi si ferma su un ingresso altrui entra in hotel, lancia il dado per le **notti** e paga.
-- Chi non può pagare mette **all'asta** i propri hotel; se non basta è in bancarotta. Vince l'ultima squadra
-  rimasta, o la più ricca se la partita viene terminata prima.
+- Chi non può pagare mette **all'asta** i propri hotel, senza prezzo minimo; se nessuno offre l'hotel viene
+  demolito. Se non basta è bancarotta. Vince l'ultima squadra rimasta, o la più ricca se la partita viene
+  terminata prima.
+- Gli hotel sono otto, dalla pensione con un solo edificio ai grandi alberghi con cinque: numero di edifici e
+  prezzi seguono la scala del gioco classico, nomi, plancia e disegni sono nostri.
 
 Note sui telefoni:
 
@@ -79,9 +84,10 @@ adb install -r build\apk\FireGames-N.apk
 
 ## Sviluppo
 
-- `src/web` — tutto quello che si vede (pagina TV e pagina telefono), JavaScript senza build. Il tabellone è in
-  3D con [Three.js](https://threejs.org) (in `src/web/vendor`), unica libreria esterna. Palazzi, auto, persone e
-  piante sono modelli CC0 di [Kenney](https://kenney.nl) (in `src/web/assets`).
+- `src/web` — tutto quello che si vede (pagina TV e pagina telefono), JavaScript senza build e senza librerie
+  esterne. Il tabellone è in **pixel art isometrica**: le immagini (in `src/web/assets`) le disegna lo script
+  `src/art/pixelart.py`, da rieseguire quando si cambia un disegno:
+  `uv run --no-project --with pillow python -I src/art/pixelart.py`.
 - `src/android` — guscio Kotlin: server HTTP/WebSocket in LAN, WebView a schermo intero, aggiornamento automatico.
 - Prova sul PC senza TV:
 

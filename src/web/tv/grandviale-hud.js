@@ -1,13 +1,13 @@
-// Grand Viale: the flat panels drawn over the 3D scene on their own transparent canvas, in a 1920x1080 space:
-// team chips with the money, the banner, the tray with the last result of the two dice, floating amounts and
-// the final ranking.
+// Grand Viale: the flat panels drawn over the board on their own transparent canvas, in a 1920x1080 space:
+// the names of the hotels, team chips with the money, the banner, the tray with the last result of the two
+// dice, floating amounts and the final ranking.
 
 import { euro } from "../shared/config.js";
 import { roundedRect } from "./scene.js";
 
 const WIDTH = 1920;
 const HEIGHT = 1080;
-const CANVAS_MAX_WIDTH = 1280; // like the 3D scene: 720p scaled up by the page
+const CANVAS_MAX_WIDTH = 1280; // 720p scaled up by the page: enough for the letters, light for the TV
 
 export const PERMIT_LOOK = {
   si: { text: "SÌ", color: "#2ec46d" },
@@ -41,6 +41,30 @@ export function createHud(canvas, state) {
   }
   window.addEventListener("resize", resize);
   resize();
+
+  // A small plate over each lot: the name, in the owner's colour, or the price of the land while it is free.
+  function drawLabels(labels) {
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    for (const label of labels) {
+      const text = label.price ? label.text + " · " + euro(label.price) : label.text;
+      context.font = "800 22px system-ui, sans-serif";
+      const width = context.measureText(text).width + 28;
+      context.fillStyle = label.hex || "rgba(16, 18, 44, 0.78)";
+      roundedRect(context, label.x - width / 2, label.y - 36, width, 36, 18);
+      if (label.hex) {
+        context.strokeStyle = "#fff";
+        context.lineWidth = 3;
+        context.stroke();
+      }
+      context.lineWidth = 5;
+      context.strokeStyle = "rgba(16, 18, 44, 0.9)";
+      if (label.hex) context.strokeText(text, label.x, label.y - 17);
+      context.fillStyle = "#fff";
+      context.fillText(text, label.x, label.y - 17);
+    }
+    context.textBaseline = "alphabetic";
+  }
 
   function drawChips(seconds) {
     state.players.forEach((player, index) => {
@@ -155,12 +179,13 @@ export function createHud(canvas, state) {
   }
 
   return {
-    draw(now, seconds) {
+    draw(now, seconds, labels) {
       const unit = canvas.width / WIDTH;
       context.setTransform(1, 0, 0, 1, 0, 0);
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.setTransform(unit, 0, 0, unit, 0, 0);
       state.effects = state.effects.filter((effect) => now - effect.start < effect.duration);
+      if (!state.finished) drawLabels(labels);
       drawChips(seconds);
       drawTray();
       drawBanner(now);

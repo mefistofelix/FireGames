@@ -148,7 +148,7 @@ h1 span {
   font-size: 2.3vh;
 }
 
-/* While a game runs, its canvases cover the lobby: the 3D world and, over it, the flat panels. */
+/* While a game runs, its canvases cover the lobby: the board and, over it, the flat panels. */
 #world, #board {
   position: fixed;
   inset: 0;
